@@ -56,9 +56,16 @@ public sealed partial class WorkbenchView : Grid,IDisposable
         Session.DocumentChanged+=DocumentChanged; Session.SelectionChanged+=SelectionChanged;
         Designer.Error+=(_,message)=>SetStatus(message,true); Outline.Error+=(_,message)=>SetStatus(message,true); Properties.Error+=(_,message)=>SetStatus(message,true); Timeline.Error+=(_,message)=>SetStatus(message,true); States.Error+=(_,message)=>SetStatus(message,true); Resources.Error+=(_,message)=>SetStatus(message,true); Data.Error+=(_,message)=>SetStatus(message,true); Source.Error+=(_,message)=>SetStatus(message,true);
         Properties.PropertyEdited+=(_,edit)=>EditProperty(edit.Property,edit.Value);
-        Properties.ActivePropertyChanged+=(_,property)=>Timeline.PropertyToRecord=property;
-        Timeline.TimeChanged+=(_,_)=> { Designer.SetPreview(Timeline.ActiveStoryboard,Timeline.Time,States.SelectedState); Changed?.Invoke(this,EventArgs.Empty); };
-        States.StatePreviewRequested+=(_,state)=> { Timeline.Stop(); Designer.SetPreview(null,0,state); SetStatus(state is null ? "Base values" : "Previewing visual state: "+state.Name); };
+        Properties.ActivePropertyChanged+=(_,property)=> { Timeline.PropertyToRecord=property;States.PropertyToReset=property; };
+        Timeline.TimeChanged+=(_,_)=> { Designer.SetPreview(Timeline.PreviewStoryboard,Timeline.PreviewTime,States.SelectedState); Changed?.Invoke(this,EventArgs.Empty); };
+        States.StatePreviewRequested+=(_,state)=>
+        {
+            Timeline.Stop(); Designer.SetPreview(null,0,state);
+            Properties.ValueOverride=state is null ? null : (node,key)=>States.SelectedState?.Setters.FirstOrDefault(s=>s.TargetId==node.Id && s.Property==key)?.Value;
+            Properties.EditingContext=state is null ? "" : (States.IsRecording ? "Recording state: " : "Preview state: ")+state.Name;
+            Properties.AllowInlineBrushEditing=!States.IsRecording;Properties.Refresh();
+            SetStatus(state is null ? "Base values" : (States.IsRecording ? "Recording properties in state: " : "Previewing visual state: ")+state.Name);
+        };
         Designer.PreviewClicked+=(_,id)=> { var n=Session.Document.Root.Find(id); if(n?.Type=="Button") { Timeline.Stop(); Timeline.TogglePlay(); } };
         Designer.ViewChanged+=(_,_)=> { UpdateZoom(); Changed?.Invoke(this,EventArgs.Empty); };
         Designer.Rendered+=(_,_)=>
@@ -101,6 +108,7 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     }
     private void EditProperty(string property,string value)
     {
+        if(States.IsRecording && States.SelectedState is not null) { States.RecordProperty(property,value); return; }
         if(Timeline.IsRecording && AnimationEngine.Properties.Contains(property))
         {
             if(!double.TryParse(value,System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out var number) || !double.IsFinite(number)) throw new InvalidOperationException("Enter a finite numeric keyframe value.");
@@ -110,7 +118,7 @@ public sealed partial class WorkbenchView : Grid,IDisposable
         {
             var ids=Session.Selection.ToArray(); Session.Execute("Set "+property,d=>
             {
-                var root=d.Root; foreach(var id in ids) root=root.Update(id,n=>n.IsLocked ? n : n.Set(property,value) with { PropertyElements=n.PropertyElements.Where(p=>!p.Contains("."+property,StringComparison.Ordinal)).ToImmutableArray() }); return d with { Root=root };
+                var root=d.Root; foreach(var id in ids) root=root.Update(id,n=>Session.Index.IsLocked(n.Id) ? n : n.Set(property,value) with { PropertyElements=n.PropertyElements.Where(p=>!p.Contains("."+property,StringComparison.Ordinal)).ToImmutableArray() }); return d with { Root=root };
             });
         }
         else Session.SetProperty(property,value);
@@ -119,6 +127,9 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     private void DocumentChanged(object? sender,EventArgs e)
     {
         UpdateTitle(); Source.Synchronize(Session.Document,Session.Revision); Designer.InvalidateLayout();
+        if(States.SelectedState is { } state) Designer.SetPreview(null,0,state);
+        Properties.EditingContext=States.SelectedState is { } selected ? (States.IsRecording ? "Recording state: " : "Preview state: ")+selected.Name : "";
+        Properties.AllowInlineBrushEditing=!States.IsRecording;Properties.Refresh();
         if(_initialized && !_loading) { _saveTimer.Stop(); _saveTimer.Start(); } Changed?.Invoke(this,EventArgs.Empty);
     }
     private void SelectionChanged(object? sender,EventArgs e)

@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
+using System.Xml.Linq;
 namespace DesignSpace.Core;
 
 /// <summary>A weakly cached identity/ancestry index for an immutable document root.</summary>
@@ -56,10 +57,18 @@ public sealed class DesignIndex
 /// <summary>Structural-sharing batch edits usable without a session or UI framework.</summary>
 public static class DesignTree
 {
-    public static DesignNode SetProperties(DesignNode root,IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> changes)
+    private static readonly ConditionalWeakTable<DesignNode,string[]> PropertyNames=new();
+    public static DesignNode SetProperties(DesignNode root,IReadOnlyDictionary<Guid,IReadOnlyDictionary<string,string>> changes,bool replacePropertyElements=false)
     {
         return DesignIndex.For(root).Transform(changes.Keys.ToHashSet(),n=>
         {
+            if(replacePropertyElements && !n.PropertyElements.IsEmpty)
+            {
+                var names=PropertyNames.GetValue(n,node=>node.PropertyElements.Select(raw=>XElement.Parse(raw).Name.LocalName).ToArray());
+                var keys=changes[n.Id].Keys.Select(key=>key.Contains('.') ? key : n.Type+"."+key).ToHashSet();
+                var retained=n.PropertyElements.Where((raw,i)=>!keys.Contains(names[i])).ToImmutableArray();
+                if(retained.Length!=n.PropertyElements.Length) n=n with { PropertyElements=retained };
+            }
             foreach(var p in changes[n.Id]) n=p.Key=="Rotation" ? n.Rotation==Numbers.Parse(p.Value) ? n : n with { Rotation=Numbers.Parse(p.Value) } : n.Set(p.Key,p.Value);
             return n;
         });

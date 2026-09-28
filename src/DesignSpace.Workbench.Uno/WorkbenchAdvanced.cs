@@ -15,6 +15,7 @@ public interface IWorkbenchAssetPlatform
 public sealed partial class WorkbenchView
 {
     private TemplateEditorControl? _templateEditor;
+    private StoryboardInspectorControl? _storyboardInspector;
     private LayoutAuthoringControl? _layoutAuthoring;
     /// <summary>Installs the reusable template/layout panels and host-dependent image import command.</summary>
     public void EnableAdvancedTools()
@@ -22,6 +23,8 @@ public sealed partial class WorkbenchView
         if(_templateEditor is not null)return;
         Designer.PreviewResolver=DesignPreview.Resolve;Designer.EditingStarted+=StopAnimationForEditing;
         _templateEditor=new(Session);_templateEditor.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Templates",_templateEditor);
+        _storyboardInspector=new(Session,Timeline);_storyboardInspector.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Timing",_storyboardInspector);
+        Timeline.SettingsRequested+=OpenTiming;
         _layoutAuthoring=new(Session);_layoutAuthoring.Error+=(_,error)=>SetStatus(error,true);_leftTabs.Add("Layout",_layoutAuthoring);
         var toolbar=Children.OfType<StackPanel>().FirstOrDefault(p=>GetRow(p)==2);
         if(toolbar is not null)
@@ -32,10 +35,11 @@ public sealed partial class WorkbenchView
         }
         Designer.InvalidateLayout();
     }
+    private void OpenTiming(object? sender,EventArgs args)=>_rightTabs.Select("Timing");
     private void StopAnimationForEditing(object? sender,EventArgs args)=>Timeline.Stop();
     public void DisposeAdvancedTools()
     {
-        Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
+        Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
     }
     public async Task ImportImageAsync()
     {

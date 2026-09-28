@@ -15,7 +15,13 @@ public sealed class SkiaTextService : IDisposable
     }
     private sealed record Run(SKTextBlob? Blob,float Width,float Ascent,float Height);
     private readonly Dictionary<FontKey,FontEntry> _fonts=[];
-    private readonly Dictionary<(FontKey,string),Run> _runs=[];
+    private readonly ResourceLruCache<(FontKey,string),Run> _runs=new(512,8*1024*1024,run=>run.Blob?.Dispose());
+    private readonly ResourceLruCache<(FontKey,string,double),string[]> _lines=new(128,2*1024*1024);
+    private readonly SKPaint _paint=new(){IsAntialias=true};
+    public long LineLayoutCount { get; private set; }
+    public long LineCacheHits { get; private set; }
+    public long CachedRunBytes=>_runs.Cost;
+    public long CachedLineBytes=>_lines.Cost;
     public long ShapeCount { get; private set; }
     public long CacheHits { get; private set; }
     private FontEntry Font(FontKey key)
@@ -46,11 +52,22 @@ public sealed class SkiaTextService : IDisposable
             blob=builder.Build();
         }
         var metrics=font.Font.Metrics; run=new(blob,result.Width,-metrics.Ascent,Math.Max(key.Size,metrics.Descent-metrics.Ascent+metrics.Leading));
-        if(_runs.Count>=512) ClearRuns(); _runs[(key,text)]=run; return run;
+        _runs.Add((key,text),run,128L+text.Length*2L+result.Codepoints.Length*16L); return run;
     }
     private static FontKey Key(double size,string family,bool bold=false,bool italic=false)=>new(family,(float)Math.Clamp(size,1,4096),bold,italic);
-    private List<string> Lines(string text,FontKey key,double width,bool wrap)
+    private static FontKey NodeKey(DesignNode node)
     {
+        var weight=node.Get("FontWeight");
+        return Key(node.Number("FontSize",node.Type=="TextBlock" ? 14 : 13),node.Get("FontFamily","sans-serif"),
+            weight is "Bold" or "SemiBold" or "Black" || Numbers.Parse(weight)>=600,node.Get("FontStyle")=="Italic");
+    }
+    private string[] Lines(string text,FontKey key,double width,bool wrap)
+    {
+        if(text.Length>32768) throw new InvalidOperationException("One text block is limited to 32,768 UTF-16 characters.");
+        var constraint=wrap && double.IsFinite(width) && width>0 ? width : double.PositiveInfinity;
+        var cacheKey=(key,text,constraint);
+        if(_lines.TryGetValue(cacheKey,out var cached)) { LineCacheHits++;return cached; }
+        LineLayoutCount++;
         var result=new List<string>();
         foreach(var paragraph in text.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n').Split('\n'))
         {
@@ -76,26 +93,34 @@ public sealed class SkiaTextService : IDisposable
             }
             result.Add(line.TrimEnd());
         }
-        return result;
+        var lines=result.ToArray();
+        _lines.Add(cacheKey,lines,128L+text.Length*2L+lines.Sum(line=>32L+line.Length*2L));
+        return lines;
     }
     public DSize Measure(string text,double size,string family,double width=double.PositiveInfinity,bool wrap=false)
     {
         var key=Key(size,family); var lines=Lines(text,key,width,wrap); var height=Shape("Mg",key).Height;
-        return new(lines.Select(line=>(double)Shape(line,key).Width).DefaultIfEmpty(0).Max(),Math.Max(1,lines.Count)*height);
+        return new(lines.Select(line=>(double)Shape(line,key).Width).DefaultIfEmpty(0).Max(),Math.Max(1,lines.Length)*height);
+    }
+    public DSize Measure(DesignNode node,double width)
+    {
+        var key=NodeKey(node);var lines=Lines(node.Get("Text",node.Get("Content",node.TextContent)),key,width,node.Get("TextWrapping")=="Wrap");
+        var naturalHeight=Shape("Mg",key).Height;var height=node.Number("LineHeight",naturalHeight);if(height<=0)height=naturalHeight;
+        return new(lines.Select(line=>(double)Shape(line,key).Width).DefaultIfEmpty(0).Max(),Math.Max(1,lines.Length)*height);
     }
     public void Draw(SKCanvas canvas,string text,float x,float baseline,double size,SKColor color,string family="sans-serif")
     {
         var run=Shape(text,Key(size,family)); if(run.Blob is null) return;
-        using var paint=new SKPaint { IsAntialias=true,Color=color }; canvas.DrawText(run.Blob,x,baseline,paint);
+        _paint.Color=color;canvas.DrawText(run.Blob,x,baseline,_paint);
     }
     public void DrawNode(SKCanvas canvas,DesignNode n,SKRect bounds,SKColor color,bool centered=false)
     {
         var size=n.Number("FontSize",n.Type=="TextBlock" ? 14 : 13); var weight=n.Get("FontWeight");
-        var key=Key(size,n.Get("FontFamily","sans-serif"),weight is "Bold" or "SemiBold" or "Black" || Numbers.Parse(weight)>=600,n.Get("FontStyle")=="Italic");
+        var key=NodeKey(n);
         var text=n.Get("Text",n.Get("Content",n.TextContent)); var lines=Lines(text,key,bounds.Width,n.Get("TextWrapping")=="Wrap");
         var metrics=Shape("Mg",key); var lineHeight=n.Number("LineHeight",metrics.Height); if(lineHeight<=0) lineHeight=metrics.Height;
-        var y=centered ? bounds.MidY-(float)(lines.Count*lineHeight)/2+metrics.Ascent : bounds.Top+metrics.Ascent;
-        using var paint=new SKPaint { IsAntialias=true,Color=color }; canvas.Save(); canvas.ClipRect(bounds);
+        var y=centered ? bounds.MidY-(float)(lines.Length*lineHeight)/2+metrics.Ascent : bounds.Top+metrics.Ascent;
+        var paint=_paint;paint.Color=color;canvas.Save(); canvas.ClipRect(bounds);
         foreach(var line in lines)
         {
             var run=Shape(line,key); var alignment=n.Get("TextAlignment",centered ? "Center" : "Left");
@@ -106,6 +131,6 @@ public sealed class SkiaTextService : IDisposable
         }
         canvas.Restore();
     }
-    private void ClearRuns() { foreach(var run in _runs.Values) run.Blob?.Dispose(); _runs.Clear(); }
-    public void Dispose() { ClearRuns(); foreach(var font in _fonts.Values) font.Dispose(); _fonts.Clear(); }
+    private void ClearRuns()=>_runs.Clear();
+    public void Dispose() { ClearRuns();_lines.Clear();_paint.Dispose(); foreach(var font in _fonts.Values) font.Dispose(); _fonts.Clear(); }
 }

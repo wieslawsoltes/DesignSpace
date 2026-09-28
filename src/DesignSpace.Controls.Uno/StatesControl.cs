@@ -12,15 +12,21 @@ public sealed class StatesControl : Grid,IDisposable
     private readonly StackPanel _states=new(){Spacing=2,Padding=new Thickness(6)};
     private readonly TextBox _name=StudioTheme.Input("NewState","New visual state name",118);
     private string? _selected;
+    private readonly StudioButton _record;
+    public bool IsRecording { get; private set; }
+    public string PropertyToReset { get; set; }="Opacity";
     public DesignState? SelectedState=>_session.Document.States.FirstOrDefault(s=>s.Name==_selected);
     public event EventHandler<DesignState?>? StatePreviewRequested;
     public event EventHandler<string>? Error;
     public StatesControl(DesignSession session)
     {
-        _session=session; RowDefinitions.Add(new(){Height=new GridLength(29)}); RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)}); RowDefinitions.Add(new(){Height=new GridLength(29)});
+        _session=session; RowDefinitions.Add(new(){Height=new GridLength(29)}); RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)}); RowDefinitions.Add(new(){Height=new GridLength(29)}); RowDefinitions.Add(new(){Height=new GridLength(29)});
         var toolbar=new StackPanel { Orientation=Orientation.Horizontal,Spacing=2,Padding=new Thickness(4,2,4,2) }; toolbar.Children.Add(_name); toolbar.Children.Add(new StudioButton("+",AddState,"Add visual state")); toolbar.Children.Add(new StudioButton("−",RemoveState,"Remove visual state")); Children.Add(toolbar);
         var scroll=new ScrollViewer { Content=_states,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled }; SetRow(scroll,1); Children.Add(scroll);
         var footer=new StackPanel { Orientation=Orientation.Horizontal }; footer.Children.Add(new StudioButton("Capture selection",Capture,"Capture selected objects into state")); footer.Children.Add(new StudioButton("Base",()=>Select(null),"Return to base state")); SetRow(footer,2); Children.Add(footer);
+        var recording=new StackPanel { Orientation=Orientation.Horizontal };
+        _record=new StudioButton("Record state",()=> { IsRecording=!IsRecording && SelectedState is not null;_record!.IsSelected=IsRecording;StatePreviewRequested?.Invoke(this,SelectedState); },"Record visual state properties");
+        recording.Children.Add(_record);recording.Children.Add(new StudioButton("Reset property",ResetProperty,"Reset selected state property"));SetRow(recording,3);Children.Add(recording);
         _session.DocumentChanged+=Changed; Refresh();
     }
     private void Changed(object? sender,EventArgs e)=>Refresh();
@@ -31,9 +37,27 @@ public sealed class StatesControl : Grid,IDisposable
         {
             var button=new StudioButton("○   "+state.Name+"    "+state.Setters.Length+" setters",()=>Select(state.Name),"Preview state "+state.Name) { IsSelected=_selected==state.Name,HorizontalAlignment=HorizontalAlignment.Stretch }; _states.Children.Add(button);
         }
-        if(_selected is not null && SelectedState is null) _selected=null;
+        if(_selected is not null && SelectedState is null) {_selected=null;IsRecording=false;}
+        _record.IsSelected=IsRecording;
     }
-    public void Select(string? name) { _selected=name; Refresh(); StatePreviewRequested?.Invoke(this,SelectedState); }
+    public void Select(string? name)
+    {
+        _selected=name;if(name is null) IsRecording=false;Refresh();StatePreviewRequested?.Invoke(this,SelectedState);
+    }
+    public void RecordProperty(string property,string value)
+    {
+        if(!IsRecording || SelectedState is not { } state) throw new InvalidOperationException("Select a state and enable Record state first.");
+        var targets=_session.Selection;
+        _session.Execute("Set state "+state.Name+"."+property,d=>StateEditing.SetProperty(d,state.Name,targets,property,value));
+        StatePreviewRequested?.Invoke(this,SelectedState);
+    }
+    private void ResetProperty()
+    {
+        if(SelectedState is not { } state) return;
+        var targets=_session.Selection;
+        _session.Execute("Reset state "+PropertyToReset,d=>StateEditing.RemoveProperty(d,state.Name,targets,PropertyToReset));
+        StatePreviewRequested?.Invoke(this,SelectedState);
+    }
     private void AddState()
     {
         try

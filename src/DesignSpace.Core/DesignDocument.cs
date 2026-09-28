@@ -36,7 +36,15 @@ public sealed record DesignNode
 }
 public sealed record AnimationKey(double Time,double Value,string Easing="Linear");
 public sealed record AnimationTrack(Guid TargetId,string Property,ImmutableArray<AnimationKey> Keys);
-public sealed record DesignStoryboard(Guid Id,string Name,double Duration,ImmutableArray<AnimationTrack> Tracks,bool Loop=false);
+public sealed record DesignStoryboard(Guid Id,string Name,double Duration,ImmutableArray<AnimationTrack> Tracks,bool Loop=false)
+{
+    public bool AutoReverse { get; init; }
+    public double BeginTime { get; init; }
+    public double SpeedRatio { get; init; }=1;
+    public double RepeatCount { get; init; }=1;
+    public double? RepeatDuration { get; init; }
+    public string FillBehavior { get; init; }="HoldEnd";
+}
 public sealed record StateSetter(Guid TargetId,string Property,string Value);
 public sealed record DesignState(string Name,ImmutableArray<StateSetter> Setters);
 public sealed record DesignDocument
@@ -96,19 +104,27 @@ public static partial class DocumentValidator
         foreach(var board in doc.Storyboards)
         {
             if(board is null || string.IsNullOrWhiteSpace(board.Name) || !boardNames.Add(board.Name) || board.Tracks.IsDefault) throw new InvalidDataException("Invalid or duplicate storyboard.");
-            if(board.Duration<=0 || !double.IsFinite(board.Duration)) throw new InvalidDataException("Storyboard duration must be positive.");
+            if(board.Duration<=0 || !double.IsFinite(board.Duration) || board.Duration>TimeSpan.MaxValue.TotalSeconds/4) throw new InvalidDataException("Storyboard duration is out of range.");
+            if(!double.IsFinite(board.BeginTime) || board.BeginTime<0 || board.BeginTime>TimeSpan.MaxValue.TotalSeconds/4 ||
+               !double.IsFinite(board.SpeedRatio) || board.SpeedRatio<=0 || !double.IsFinite(board.RepeatCount) || board.RepeatCount<0 ||
+               board.RepeatDuration is { } span && (!double.IsFinite(span) || span<0 || span>TimeSpan.MaxValue.TotalSeconds/4) ||
+               board.FillBehavior is not ("HoldEnd" or "Stop") || board.Loop && board.RepeatDuration is not null)
+                throw new InvalidDataException("Invalid storyboard timing settings.");
+            if(!board.Loop && !double.IsFinite((board.RepeatDuration ?? board.Duration*(board.AutoReverse ? 2 : 1)*board.RepeatCount)/board.SpeedRatio+board.BeginTime))
+                throw new InvalidDataException("Storyboard timing exceeds the supported range.");
             var tracks=new HashSet<(Guid,string)>();
             foreach(var track in board.Tracks)
             {
                 if(track is null || track.Keys.IsDefault || !tracks.Add((track.TargetId,track.Property)) || !ids.Contains(track.TargetId)) throw new InvalidDataException("Invalid, duplicate or dangling animation track.");
                 if(track.Keys.Any(k=>k is null || !double.IsFinite(k.Time) || !double.IsFinite(k.Value) || k.Time<0 || k.Time>board.Duration)) throw new InvalidDataException("Invalid animation keyframe.");
+                if(track.Keys.Any(k=>k.Easing is not ("Linear" or "Discrete" or "EaseIn" or "EaseOut" or "EaseInOut"))) throw new InvalidDataException("Unsupported keyframe easing.");
                 if(track.Keys.GroupBy(k=>k.Time).Any(g=>g.Count()>1)) throw new InvalidDataException("Duplicate keyframe time.");
             }
         }
         var stateNames=new HashSet<string>(StringComparer.Ordinal);
         foreach(var state in doc.States)
         {
-            if(state is null || !Identifier().IsMatch(state.Name) || !stateNames.Add(state.Name) || state.Setters.IsDefault || state.Setters.Any(s=>s is null || !ids.Contains(s.TargetId))) throw new InvalidDataException("Invalid, duplicate or dangling visual state.");
+            if(state is null || !Identifier().IsMatch(state.Name) || !stateNames.Add(state.Name) || state.Setters.IsDefault || state.Setters.Any(s=>s is null || !ids.Contains(s.TargetId) || string.IsNullOrWhiteSpace(s.Property) || s.Value is null) || state.Setters.GroupBy(s=>(s.TargetId,s.Property)).Any(g=>g.Count()>1)) throw new InvalidDataException("Invalid, duplicate or dangling visual state.");
         }
     }
 }

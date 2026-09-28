@@ -4,6 +4,7 @@ namespace DesignSpace.Engine;
 
 public interface ITextMetrics { DSize Measure(string text,double size,string family); }
 public interface IConstrainedTextMetrics : ITextMetrics { DSize Measure(string text,double size,string family,double width,bool wrap); }
+public interface IStyledTextMetrics : IConstrainedTextMetrics { DSize Measure(DesignNode node,double width); }
 public sealed class ApproximateTextMetrics : IConstrainedTextMetrics
 {
     public DSize Measure(string text,double size,string family)=>Measure(text,size,family,double.PositiveInfinity,false);
@@ -54,7 +55,7 @@ public sealed class LayoutEngine(ITextMetrics? metrics=null)
         switch(node.Type)
         {
             case "TextBlock": case "TextBox": case "Button": case "CheckBox": case "RadioButton": case "ContentPresenter":
-                desired=_metrics is IConstrainedTextMetrics constrained ? constrained.Measure(text,size,family,inner.Width,node.Get("TextWrapping")=="Wrap") : _metrics.Measure(text,size,family);
+                desired=_metrics is IStyledTextMetrics styled ? styled.Measure(node,inner.Width) : _metrics is IConstrainedTextMetrics constrained ? constrained.Measure(text,size,family,inner.Width,node.Get("TextWrapping")=="Wrap") : _metrics.Measure(text,size,family);
                 if(node.Type is "Button" or "TextBox") desired=new(desired.Width+24,Math.Max(30,desired.Height+12));
                 if(node.Type is "CheckBox" or "RadioButton") desired=new(desired.Width+24,Math.Max(20,desired.Height));
                 if(!node.Children.IsEmpty) desired=ContentSize(node,inner); break;
