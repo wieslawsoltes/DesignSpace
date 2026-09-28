@@ -131,7 +131,7 @@ try{
     assert.deepEqual(errors,[]);assert.ok(!log.some(s=>s.startsWith('error: [DesignSpace')));const s=await snapshot();assert.deepEqual(s.rendering.warnings,[]);assert.deepEqual(s.rendering.previewWarnings,[]);
   });
   await page.screenshot({path:directory+'/workspace-edited.png'});
-}catch(error){await page.screenshot({path:directory+'/failure.png'}).catch(()=>{});await writeFile(directory+'/failure-dom.html',await page.content().catch(()=>''));throw error;}
+}catch(error){await writeFile(directory+'/failure.txt',String(error.stack??error));await page.screenshot({path:directory+'/failure.png'}).catch(()=>{});await writeFile(directory+'/failure-dom.html',await page.content().catch(()=>''));throw error;}
 finally{
   await writeFile(directory+'/browser.log',log.join('\n'));await writeFile(directory+'/results.json',JSON.stringify({passed:results.length,tests:results,errors},null,2));
   await writeFile(directory+'/diagnostics.json',JSON.stringify(await snapshot().catch(()=>null)??null,null,2));await browser.close();

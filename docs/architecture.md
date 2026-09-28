@@ -129,3 +129,20 @@ Pen and Pencil drafts stay outside the document until completed. Direct point ma
 The renderer's native path cache keys geometry and transform separately from paint. Pan/zoom of the surrounding scene does not rebuild ordinary scene paths. Bounds requests do not eagerly flatten curves; hit-test tessellation is lazy and weakly cached. All native paths and adorner resources are released when their owning renderer is disposed. These UI-thread caches must not be shared concurrently.
 
 See the compatibility matrix for affine arc approximation, destructive-operation guards and geometry limits. Neither native booleans nor adaptive picking assert bitwise equivalence to Microsoft Blend/WPF geometry processing.
+
+
+## Batch anchor editing
+
+`PathAnchorEditing` in Engine exposes selection normalization, transformed rectangular queries, `Translate`, `MoveTo`, `Remove`, `Align` and `Distribute` independently of Uno. Anchor handles identify a figure and segment endpoint; `Segment=-1` identifies the figure start. An explicit closing endpoint coincident with that start is normalized to the same anchor. Tangent handles are not valid anchor selections.
+
+```csharp
+var geometry = VectorPathCodec.Parse("M0 0C10 20 20 20 30 0L60 0");
+var points = PathAnchorEditing.Selection(geometry,
+    [new(0, -1, PathHandleKind.Anchor), new(0, 0, PathHandleKind.Anchor)]);
+var moved = PathAnchorEditing.Translate(geometry, points, new DPoint(8, 0));
+var aligned = PathAnchorEditing.Align(moved, points, "Top", DMatrix.Identity);
+```
+
+The APIs return immutable geometry without committing a session. Batch move/delete use one traversal per affected figure and retain unaffected figure references; distribution additionally sorts selected coordinates. `MoveTo` rejects nonfinite or out-of-budget coordinates before returning a replacement. Shared quadratic controls follow the average of two selected endpoint displacements; cubic controls follow their associated endpoint. Skipped anchors are bridged on deletion, retaining adjacent segments and suitable cubic tangents. A figure with fewer than two survivors is removed.
+
+`DesignerSurface.SelectedPathAnchors` exposes the current read-only point set. Pointer previews use the frozen source geometry and commit through one `DesignSession.Execute` on release. Source revision checks prevent applying a drag over a changed document. Cancelling restores the prior point selection for a marquee and discards preview geometry. Point selection is not serialized or added to document history. A host can use the optional selected-anchor set in `PathAdornerRenderer.Draw` without the complete workbench.

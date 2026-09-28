@@ -3,9 +3,9 @@ on:
   push:
     tags: ['v*']
     branches: [main]
-    paths: ['.github/workflows/release.yml']
+    paths: ['src/**', 'tests/**', 'global.json', 'Directory.Build.props', '.github/workflows/release.yml']
   pull_request:
-    paths: ['.github/workflows/release.yml']
+    paths: ['src/**', 'tests/**', 'global.json', 'Directory.Build.props', '.github/workflows/release.yml']
   workflow_dispatch:
 permissions:
   contents: read
