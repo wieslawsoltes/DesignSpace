@@ -14,7 +14,7 @@ var ns=DesignNode.PresentationNamespace;var x=DesignNode.XamlNamespace;
 string Wrap(string content,string attributes="")=>$"<Canvas xmlns='{ns}' xmlns:x='{x}' x:Name='Root' Width='960' Height='640' {attributes}>{content}</Canvas>";
 DesignDocument Sample()=>SampleDocument.Create();
 DesignDocument RoundTrip(DesignDocument d)=>XamlCodec.Parse(XamlCodec.Write(d)).Document;
-Test("native immutable JSON without reflection",()=>{var d=Sample();var text=NativeDocumentCodec.Write(d);var p=NativeDocumentCodec.Read(text);Equal(d.Root.Id,p.Root.Id);Equal(d.Root.Children.Length,p.Storyboards.Length<0 ? -1 : p.Root.Children.Length);Equal(d.Storyboards[0].Tracks[0].TargetId,p.Storyboards[0].Tracks[0].TargetId);Equal(text,NativeDocumentCodec.Write(p));});
+Test("native immutable JSON without reflection",()=>{var d=Sample();var text=NativeDocumentCodec.Write(d);var p=NativeDocumentCodec.Read(text);Equal(d.Root.Id,p.Root.Id);Equal(d.Root.Children.Length,p.Root.Children.Length);Equal(d.Storyboards[0].Tracks[0].TargetId,p.Storyboards[0].Tracks[0].TargetId);Equal(text,NativeDocumentCodec.Write(p));});
 Test("native preserves locks",()=>{var d=Sample();d=d with { Root=d.Root with { IsLocked=true } };Check(NativeDocumentCodec.Read(NativeDocumentCodec.Write(d)).Root.IsLocked);});
 Test("XAML node count round-trip",()=>Equal(Sample().Root.DescendantsAndSelf().Count(),RoundTrip(Sample()).Root.DescendantsAndSelf().Count()));
 Test("rotation animation round-trip",()=>{var p=RoundTrip(Sample());Equal(2,p.Storyboards[0].Tracks.Length);Equal("Rotation",p.Storyboards[0].Tracks[1].Property);Equal(360d,p.Storyboards[0].Tracks[1].Keys[1].Value);});

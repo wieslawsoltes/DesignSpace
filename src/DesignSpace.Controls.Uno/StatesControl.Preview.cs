@@ -30,10 +30,9 @@ public sealed partial class StatesControl
     {
         _playback=new(_session.Document,DesignPreview.Resolve);
         _group=VisualStateGroups.Get(_session.Document).FirstOrDefault()?.Name??VisualStateGroups.DefaultName;
-        RowDefinitions.Add(new(){Height=new GridLength(29)});
-        var bar=new StackPanel{Orientation=Orientation.Horizontal};
-        _transitionToggle=new StudioButton("Transitions",()=>SetTransitionsEnabled(!TransitionsEnabled),"Toggle state transition preview");
-        bar.Children.Add(_transitionToggle);bar.Children.Add(new StudioButton("Edit transitions",()=>TransitionEditorRequested?.Invoke(this,EventArgs.Empty),"Edit visual transitions"));SetRow(bar,4);Children.Add(bar);
+        _transitionToggle=new StudioButton("Animate",()=>SetTransitionsEnabled(!TransitionsEnabled),"Toggle state transition preview");
+        Children.OfType<StackPanel>().Single(p=>GetRow(p)==3).Children.Add(_transitionToggle);
+        Children.OfType<StackPanel>().Single(p=>GetRow(p)==2).Children.Add(new StudioButton("Transitions",()=>TransitionEditorRequested?.Invoke(this,EventArgs.Empty),"Edit visual transitions"));
         Unloaded+=(_,_)=>StopTransitions();
     }
     public void SetTransitionsEnabled(bool enabled)
