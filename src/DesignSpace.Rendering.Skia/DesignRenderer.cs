@@ -89,7 +89,7 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
                 if(VectorGeometry.ReadClip(n) is { } clip)c.ClipPath(_paths.Get(clip,DMatrix.Translate(b.Left,b.Top)),SKClipOperation.Intersect,true);
             }
             catch(InvalidDataException ex){if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);c.RestoreToCount(outerCount);return;}
-            if(n.Type is "Path" or "Polygon" or "Polyline" || !c.QuickReject(b))
+            if(VectorGeometry.IsShape(n) || !c.QuickReject(b))
             {
                 var nodeCount=c.SaveCount;
                 try{DrawNode(c,entry);LastDrawnNodes++;}
@@ -106,7 +106,9 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
     }
     private void DrawNode(SKCanvas c,LayoutEntry entry)
     {
-        var n=entry.Node;var b=Rect(entry.Bounds);if(b.Width<=0||b.Height<=0)return;
+        var n=entry.Node;var b=Rect(entry.Bounds);
+        if(VectorGeometry.IsShape(n)){DrawShape(c,entry);return;}
+        if(b.Width<=0||b.Height<=0)return;
         if(n.Get("{https://designspace.dev/designer}TemplateExpanded")=="True")return;
         var property=n.Type is "Rectangle" or "Ellipse" or "Path" or "Polygon" or "Polyline" ? "Fill" : "Background";
         var fill=Color(n.Get(property),n.Type is "Page" or "Window" or "UserControl" ? SKColors.White : SKColors.Transparent);
@@ -160,5 +162,5 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         using var surface=SKSurface.Create(new SKImageInfo((int)w,(int)h));if(surface is null)throw new InvalidOperationException("Unable to allocate export surface.");
         surface.Canvas.Clear(SKColors.Transparent);surface.Canvas.Scale(scale);DrawScene(surface.Canvas,layout);using var image=surface.Snapshot();using var data=image.Encode(SKEncodedImageFormat.Png,100);return data.ToArray();
     }
-    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_text.Dispose();_images.Dispose();_children.Clear();_resources.Clear();_indexed=null;}
+    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_strokeShapes.Dispose();_shapePaint.Dispose();_shapeSources.Clear();_text.Dispose();_images.Dispose();_children.Clear();_resources.Clear();_indexed=null;}
 }

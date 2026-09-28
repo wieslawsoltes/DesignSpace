@@ -88,6 +88,7 @@ public static partial class DocumentValidator
                 if(key is not ("Canvas.Left" or "Canvas.Top" or "Canvas.Right" or "Canvas.Bottom") && number<0) throw new InvalidDataException(key+" cannot be negative.");
                 if(key=="Opacity" && number>1) throw new InvalidDataException("Opacity must be between zero and one.");
             }
+            StrokeStyle.ValidateLiterals(n);
             foreach(var axis in new[]{"Width","Height"}) if(n.Number("Min"+axis)>n.Number("Max"+axis,double.PositiveInfinity)) throw new InvalidDataException("Minimum size exceeds maximum size.");
             if(!double.IsFinite(n.Rotation)) throw new InvalidDataException("Invalid rotation.");
             foreach(var raw in n.PropertyElements)

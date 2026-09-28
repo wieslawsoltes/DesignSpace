@@ -10,11 +10,15 @@ public sealed record LayoutEntry(DesignNode Node,DRect Bounds,double Opacity,int
     public bool IsHitTestVisible { get; init; }=true;
     public DRect VisualBounds=>WorldTransform.MapBounds(Bounds);
 }
+/// <summary>Optional host-backed geometry picking. Coordinates are local to the layout box; null requests portable fallback.</summary>
+public interface IShapeHitTest { bool? Contains(DesignNode node,DSize size,DPoint localPoint); }
+
 public sealed class LayoutSnapshot
 {
     public IReadOnlyList<LayoutEntry> Entries { get; }
     public IReadOnlyDictionary<Guid,LayoutEntry> ById { get; }
-    public LayoutSnapshot(IReadOnlyList<LayoutEntry> entries) { Entries=entries; ById=entries.ToDictionary(e=>e.Node.Id); }
+    private readonly IShapeHitTest? _shapeHitTest;
+    public LayoutSnapshot(IReadOnlyList<LayoutEntry> entries,IShapeHitTest? shapeHitTest=null) { Entries=entries; ById=entries.ToDictionary(e=>e.Node.Id); _shapeHitTest=shapeHitTest; }
     public LayoutEntry? HitTest(DPoint point,bool includeLocked=false)=>HitStack(point,includeLocked).FirstOrDefault();
     /// <summary>Returns editable owners for generated template visuals, in front-to-back order.</summary>
     public IEnumerable<LayoutEntry> HitStack(DPoint point,bool includeLocked=false)
@@ -49,9 +53,10 @@ public sealed class LayoutSnapshot
         }
         return false;
     }
-    private static bool Contains(LayoutEntry e,DPoint p)
+    private bool Contains(LayoutEntry e,DPoint p)
     {
         var b=e.Bounds;
+        if(_shapeHitTest?.Contains(e.Node,new(b.Width,b.Height),p-new DPoint(b.X,b.Y)) is { } precise)return precise;
         if(e.Node.Type is "Path" or "Polygon" or "Polyline")
         {
             try
