@@ -5,6 +5,20 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
   const point=async(x,y)=>{const v=(await snapshot()).surface;return{x:v.x+v.panX+x*v.zoom,y:v.y+v.panY+y*v.zoom};};
   async function tap(x,y){const p=await point(x,y);await page.mouse.click(p.x,p.y);await page.waitForTimeout(120);}
   async function drag(x,y,dx,dy){const a=await point(x,y),b=await point(dx,dy);await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:8});await page.mouse.up();await page.waitForTimeout(300);}
+  async function drawRectangle(x,y,right,bottom){
+    const before=await snapshot(),ids=before.nodes.map(n=>n.id);
+    await drag(x,y,right,bottom);
+    // Diagnostics are sampled, not a synchronous response to mouse.up(). Wait for
+    // creation before retaining its identity for the following Boolean operation.
+    await page.waitForFunction(({count,revision})=>{
+      const s=globalThis.designSpaceDiagnostics;
+      return s.nodes.length===count+1&&s.revision===revision+1;
+    },{count:before.nodes.length,revision:before.revision},{timeout:15000});
+    const state=await snapshot(),created=state.nodes.filter(n=>!ids.includes(n.id));
+    assert.equal(created.length,1);assert.equal(created[0].type,'Rectangle');
+    assert.deepEqual(state.selection,[created[0].name]);
+    return created[0];
+  }
   let pathId,originalData;
   await check('pen draft cancellation leaves history and model unchanged',async()=>{
     const before=await snapshot();await click('Tool Pen (P)');await tap(400,384);await drag(496,336,528,304);
@@ -49,13 +63,14 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
     await click('Undo');await page.waitForFunction(id=>globalThis.designSpaceDiagnostics.nodes.find(n=>n.id===id)?.type==='Rectangle',node.id);
   });
   await check('boolean unite is editable and undo restores both operands',async()=>{
-    await click('Tool Rectangle (R)');await drag(592,352,672,416);const a=(await snapshot()).selection[0];await drag(640,384,720,448);const b=(await snapshot()).selection[0];
+    await click('Tool Rectangle (R)');const a=await drawRectangle(592,352,672,416),b=await drawRectangle(640,384,720,448);
+    assert.notEqual(a.id,b.id);
     await click('Tool Selection (V)');await page.keyboard.down('Control');await tap(608,368);await page.keyboard.up('Control');
-    await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.selection.length===2);
+    await page.waitForFunction(names=>{const s=globalThis.designSpaceDiagnostics;return s.selection.length===2&&names.every(n=>s.selection.includes(n));},[a.name,b.name]);
     const before=await snapshot();await click('Path Unite');
-    await page.waitForFunction(count=>globalThis.designSpaceDiagnostics.nodes.length===count-1,before.nodes.length);
-    const s=await snapshot();assert.equal(s.nodes.find(n=>n.name===a).type,'Path');assert.ok(!s.nodes.some(n=>n.name===b));assert.equal(s.sourceDirty,false);
-    await page.screenshot({path:directory+'/path-combination.png'});await click('Undo');await page.waitForFunction(names=>names.every(name=>globalThis.designSpaceDiagnostics.nodes.some(n=>n.name===name&&n.type==='Rectangle')),[a,b]);
+    await page.waitForFunction(({count,revision})=>{const s=globalThis.designSpaceDiagnostics;return s.nodes.length===count-1&&s.revision===revision+1;},{count:before.nodes.length,revision:before.revision});
+    const s=await snapshot();assert.equal(s.nodes.find(n=>n.id===a.id).type,'Path');assert.ok(!s.nodes.some(n=>n.id===b.id));assert.equal(s.sourceDirty,false);
+    await page.screenshot({path:directory+'/path-combination.png'});await click('Undo');await page.waitForFunction(ids=>ids.every(id=>globalThis.designSpaceDiagnostics.nodes.some(n=>n.id===id&&n.type==='Rectangle')),[a.id,b.id]);
   });
   await check('clipping path and release are real undoable edits',async()=>{
     const before=await snapshot();await click('Path Make clip');await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.nodes.some(n=>n.properties.Clip));
