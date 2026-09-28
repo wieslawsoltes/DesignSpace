@@ -1,0 +1,58 @@
+name: Release artifacts
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet workload install wasm-tools --skip-manifest-update
+      - name: Determine version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.1.0-preview.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
+      - run: dotnet run --project tests/DesignSpace.Tests -c Release
+      - run: dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
+      - name: Pack eight independently reusable libraries
+        run: |
+          for name in Core Engine Animation Xaml Rendering.Skia Docking.Uno Controls.Uno Workbench.Uno; do
+            dotnet pack src/DesignSpace.$name -c Release -p:Version="$VERSION" -o artifacts/packages
+          done
+          test "$(find artifacts/packages -name '*.nupkg' | wc -l)" -eq 8
+      - name: Verify package contents
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          for p in Path('artifacts/packages').glob('*Uno*.nupkg'):
+              with ZipFile(p) as z:
+                  names=z.namelist()
+              for framework in ('net10.0-desktop','net10.0-browserwasm'):
+                  assert any(framework in n and n.endswith('.dll') for n in names),(p,framework)
+          PY
+      - run: git archive --format=zip --output=artifacts/DesignSpace-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DesignSpace-release
+          path: |
+            artifacts/packages/*.nupkg
+            artifacts/DesignSpace-source.zip
+      - name: Publish tagged preview release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" artifacts/packages/*.nupkg artifacts/DesignSpace-source.zip --verify-tag --generate-notes --prerelease
+    permissions:
+      contents: write

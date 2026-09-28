@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DesignSpace.Core/DesignSpace.Core.csproj" />
+    <Project Path="src/DesignSpace.Engine/DesignSpace.Engine.csproj" />
+    <Project Path="src/DesignSpace.Animation/DesignSpace.Animation.csproj" />
+    <Project Path="src/DesignSpace.Xaml/DesignSpace.Xaml.csproj" />
+    <Project Path="src/DesignSpace.Rendering.Skia/DesignSpace.Rendering.Skia.csproj" />
+    <Project Path="src/DesignSpace.Docking.Uno/DesignSpace.Docking.Uno.csproj" />
+    <Project Path="src/DesignSpace.Controls.Uno/DesignSpace.Controls.Uno.csproj" />
+    <Project Path="src/DesignSpace.Workbench.Uno/DesignSpace.Workbench.Uno.csproj" />
+    <Project Path="src/DesignSpace.App/DesignSpace.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DesignSpace.Tests/DesignSpace.Tests.csproj" />
+    <Project Path="tests/DesignSpace.Compatibility.Tests/DesignSpace.Compatibility.Tests.csproj" />
+  </Folder>
+</Solution>

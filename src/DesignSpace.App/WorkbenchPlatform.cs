@@ -1,6 +1,5 @@
 using System.Text.Json;
 using DesignSpace.Workbench.Uno;
-using DesignSpace.Xaml;
 using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage;
 using Windows.Storage.Pickers;
@@ -19,18 +18,18 @@ internal sealed class WorkbenchPlatform : IWorkbenchPlatform
     public async Task<bool> SaveAsync(string name,byte[] content,string mimeType)
     {
 #if __WASM__
-        var data=Convert.ToBase64String(content);
-        Uno.Foundation.WebAssemblyRuntime.InvokeJS("""
-            (() => {
-              const binary = atob(DATA), bytes = new Uint8Array(binary.length);
-              for (let i=0; i<binary.length; i++) bytes[i]=binary.charCodeAt(i);
-              const url=URL.createObjectURL(new Blob([bytes], {type:MIME}));
-              const link=document.createElement('a'); link.href=url; link.download=NAME;
-              document.body.appendChild(link); link.click(); link.remove();
-              setTimeout(()=>URL.revokeObjectURL(url), 30000); return 'saved';
-            })()
-            """.Replace("DATA",JsonSerializer.Serialize(data),StringComparison.Ordinal).Replace("MIME",JsonSerializer.Serialize(mimeType),StringComparison.Ordinal).Replace("NAME",JsonSerializer.Serialize(name),StringComparison.Ordinal));
-        await Task.CompletedTask; return true;
+        var payload=JsonSerializer.Serialize(new { data=Convert.ToBase64String(content),mime=mimeType,name });
+        const string script="""
+            (p => {
+              const binary=atob(p.data), bytes=new Uint8Array(binary.length);
+              for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+              const url=URL.createObjectURL(new Blob([bytes],{type:p.mime}));
+              const link=document.createElement('a');link.href=url;link.download=p.name;
+              document.body.appendChild(link);link.click();link.remove();
+              setTimeout(()=>URL.revokeObjectURL(url),30000);return 'saved';
+            })
+            """;
+        Uno.Foundation.WebAssemblyRuntime.InvokeJS(script+"("+payload+")"); await Task.CompletedTask; return true;
 #else
         var picker=new FileSavePicker { SuggestedFileName=name,SuggestedStartLocation=PickerLocationId.DocumentsLibrary };
         picker.FileTypeChoices.Add("DesignSpace file",new List<string> { Path.GetExtension(name) });

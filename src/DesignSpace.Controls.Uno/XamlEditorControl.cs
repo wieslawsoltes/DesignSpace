@@ -7,15 +7,18 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 namespace DesignSpace.Controls.Uno;
 
-/// <summary>Accessible source editing with isolated drafts, explicit apply and optimistic revision checks.</summary>
+/// <summary>Accessible source editing with isolated drafts and optimistic revision checks.</summary>
 public sealed class XamlEditorControl : Grid
 {
     private readonly TextBox _editor;
     private readonly TextBlock _status=StudioTheme.Text("XAML",11,"#9E9EA6");
     private long _baseRevision;
+    private DesignDocument? _baseline;
     private bool _syncing;
     private string _canonical="";
-    public bool IsDirty=>_editor.Text!=_canonical;
+    // Native TextBox implementations normalize line endings differently.
+    private static string Normalize(string value)=>value.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+    public bool IsDirty=>Normalize(_editor.Text)!=_canonical;
     public string Text=>_editor.Text;
     public string Status=>_status.Text;
     public long BaseRevision=>_baseRevision;
@@ -42,7 +45,13 @@ public sealed class XamlEditorControl : Grid
     {
         if(IsDirty && !discardDraft) { if(revision!=_baseRevision) _status.Text="Design changed. Reload or resolve this draft before applying."; return; }
         _syncing=true;
-        try { _canonical=XamlCodec.Write(document); _editor.Text=_canonical; _baseRevision=revision; _status.Text="XAML synchronized with design"; }
+        try
+        {
+            var text=XamlCodec.Write(document);
+            _canonical=Normalize(text); _editor.Text=text; _baseRevision=revision; _baseline=document;
+            _status.Text="XAML synchronized with design";
+        }
+        catch(Exception e) { _status.Text="XAML export needs attention: "+e.Message; Error?.Invoke(this,e.Message); }
         finally { _syncing=false; }
     }
     public void RestoreDraft(string text,long baseRevision)
@@ -56,7 +65,9 @@ public sealed class XamlEditorControl : Grid
     {
         try
         {
-            var result=XamlCodec.Parse(_editor.Text); ApplyRequested?.Invoke(this,(result.Document,_baseRevision));
+            var result=XamlCodec.Parse(_editor.Text);
+            var document=_baseline is null ? result.Document : XamlCodec.Reconcile(_baseline,result.Document);
+            ApplyRequested?.Invoke(this,(document,_baseRevision));
             _status.Text=result.Diagnostics.Count==0 ? "XAML applied" : "XAML applied with "+result.Diagnostics.Count+" compatibility warning(s)";
         }
         catch(Exception e) { _status.Text=e.Message; Error?.Invoke(this,e.Message); }
