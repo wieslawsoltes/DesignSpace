@@ -14,7 +14,7 @@ var ns=DesignNode.PresentationNamespace;var x=DesignNode.XamlNamespace;
 string Wrap(string content,string attributes="")=>$"<Canvas xmlns='{ns}' xmlns:x='{x}' x:Name='Root' Width='960' Height='640' {attributes}>{content}</Canvas>";
 DesignDocument Sample()=>SampleDocument.Create();
 DesignDocument RoundTrip(DesignDocument d)=>XamlCodec.Parse(XamlCodec.Write(d)).Document;
-Test("native immutable JSON without reflection",()=>{var d=Sample();var text=NativeDocumentCodec.Write(d);var p=NativeDocumentCodec.Read(text);Equal(d.Root.Id,p.Root.Id);Equal(d.Root.Children.Length,p.Root.Children.Length);Equal(d.Storyboards[0].Tracks[0].TargetId,p.Storyboards[0].Tracks[0].TargetId);Equal(text,NativeDocumentCodec.Write(p));});
+Test("native immutable JSON without reflection",()=>{var d=Sample();var text=NativeDocumentCodec.Write(d);var p=NativeDocumentCodec.Read(text);Equal(d.Root.Id,p.Root.Id);Equal(d.Root.Children.Length,p.Storyboards.Length<0 ? -1 : p.Root.Children.Length);Equal(d.Storyboards[0].Tracks[0].TargetId,p.Storyboards[0].Tracks[0].TargetId);Equal(text,NativeDocumentCodec.Write(p));});
 Test("native preserves locks",()=>{var d=Sample();d=d with { Root=d.Root with { IsLocked=true } };Check(NativeDocumentCodec.Read(NativeDocumentCodec.Write(d)).Root.IsLocked);});
 Test("XAML node count round-trip",()=>Equal(Sample().Root.DescendantsAndSelf().Count(),RoundTrip(Sample()).Root.DescendantsAndSelf().Count()));
 Test("rotation animation round-trip",()=>{var p=RoundTrip(Sample());Equal(2,p.Storyboards[0].Tracks.Length);Equal("Rotation",p.Storyboards[0].Tracks[1].Property);Equal(360d,p.Storyboards[0].Tracks[1].Keys[1].Value);});
@@ -80,4 +80,5 @@ Test("state cannot rename an element",()=>{var d=Sample();Reject(()=>StateEditin
 Test("reset state property retains other setters",()=>{var d=Sample();var id=d.Storyboards[0].Tracks[0].TargetId;var updated=StateEditing.SetProperty(d,"Pressed",[id],"Opacity","0.3");var reset=StateEditing.RemoveProperty(updated,"Pressed",[id],"Opacity");Equal(1,reset.States.Single(s=>s.Name=="Pressed").Setters.Length);Check(ReferenceEquals(d.Root,reset.Root));});
 Test("state override supersedes inline brush without modifying source",()=>{var d=XamlCodec.Parse(Wrap("<Rectangle x:Name='R' Width='40' Height='40'><Rectangle.Fill><SolidColorBrush Color='Blue'/></Rectangle.Fill></Rectangle>")).Document;var id=d.Root.Children[0].Id;var root=AnimationEngine.EvaluateLocal(d.Root,null,0,new("State",[new(id,"Fill","Red")]));Equal("Red",root.Find(id)!.Get("Fill"));Equal(0,root.Find(id)!.PropertyElements.Length);Equal(1,d.Root.Children[0].PropertyElements.Length);});
 
+var states=StateTransitionTests.Run();passed+=states.Passed;failed+=states.Failed;
 Console.WriteLine($"{passed} passed; {failed} failed.");return failed==0 ? 0 : 1;
