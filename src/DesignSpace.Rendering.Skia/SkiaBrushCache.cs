@@ -43,19 +43,22 @@ public static class SkiaBrushShader
 public sealed class SkiaBrushCache : IDisposable
 {
     private readonly ResourceLruCache<string,DesignBrush> _parsed=new(128,2*1024*1024);
-    private readonly ResourceLruCache<(string,DRect),SKShader> _shaders=new(256,4*1024*1024,s=>s.Dispose());
+    private readonly ResourceLruCache<(string,DRect,bool),SKShader> _shaders=new(256,4*1024*1024,s=>s.Dispose());
     public long Parses { get; private set; }
     public long Builds { get; private set; }
     public long Hits { get; private set; }
     public long EstimatedBytes=>_shaders.Cost+_parsed.Cost;
     public SKShader Get(string source,DRect bounds)
     {
+        // Test retained native shaders first. Their lifetime can exceed the parsed-data
+        // LRU; warm scenes must not reparse XML just to discover a shader cache hit.
+        if(_shaders.TryGetValue((source,bounds,false),out var shader)||_shaders.TryGetValue((source,default,true),out shader))
+        {Hits++;return shader;}
         if(!_parsed.TryGetValue(source,out var brush))
         {
             brush=BrushCodec.Parse(source);Parses++;_parsed.Add(source,brush,256L+source.Length*2L+brush.Stops.Length*96L);
         }
-        var key=(source,brush.Kind==DesignBrushKind.Solid?default:bounds);
-        if(_shaders.TryGetValue(key,out var shader)){Hits++;return shader;}
+        var key=(source,brush.Kind==DesignBrushKind.Solid?default:bounds,brush.Kind==DesignBrushKind.Solid);
         shader=SkiaBrushShader.Create(brush,bounds);
         try{_shaders.Add(key,shader,512L+source.Length*2L+brush.Stops.Length*32L);Builds++;return shader;}catch{shader.Dispose();throw;}
     }

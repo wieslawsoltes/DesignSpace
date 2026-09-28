@@ -88,7 +88,14 @@ try{
     await wait(id=>globalThis.designSpaceDiagnostics.workspace.documents.at(-1).id===id,main);assert.equal((await snapshot()).workspace.active,second);
   });
   await check('pin and close-other commands protect pinned documents',async()=>{
-    async function tabMenu(id,command){const s=await snapshot(),tab=s.workspace.documents.find(d=>d.id===id),c=s.controls.find(c=>c.Name==='Document tab '+tab.title);await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2,{button:'right'});await click(command+' '+tab.title);}
+    async function tabMenu(id,command){
+      const s=await snapshot(),tab=s.workspace.documents.find(d=>d.id===id),c=s.controls.find(c=>c.Name==='Document tab '+tab.title);
+      await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2,{button:'right'});
+      const name=command+' '+tab.title;
+      await wait(name=>globalThis.designSpaceDiagnostics.controls.some(c=>c.Name===name),name);
+      // Popup layout can be observable before its opening animation accepts input.
+      await settle();await click(name);
+    }
     await tabMenu(main,'Pin document');await wait(id=>globalThis.designSpaceDiagnostics.workspace.documents.find(d=>d.id===id).pinned,main);
     await newDocument();await newDocument();await select(second);await tabMenu(second,'Close other unpinned documents');
     await click('Discard document close');await click('Discard document close');await wait(()=>!globalThis.designSpaceDiagnostics.workspace.busy&&globalThis.designSpaceDiagnostics.workspace.documents.length===2);
