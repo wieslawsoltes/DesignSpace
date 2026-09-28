@@ -43,7 +43,7 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
     assert.equal((await snapshot()).revision,before.revision+1);await click('Undo');
   });
   await check('shape conversion preserves object identity',async()=>{
-    await click('Add Rectangle');let s=await snapshot();const node=s.nodes.find(n=>n.name===s.selection[0]);assert.ok(node);
+    await click('Asset category Shapes');await click('Add Rectangle');let s=await snapshot();const node=s.nodes.find(n=>n.name===s.selection[0]);assert.ok(node);
     await click('Open Paths panel');await click('Path Convert');await page.waitForFunction(id=>globalThis.designSpaceDiagnostics.nodes.find(n=>n.id===id)?.type==='Path',node.id);
     assert.equal((await snapshot()).paths.handles.filter(h=>h.kind==='Anchor').length,4);
     await click('Undo');await page.waitForFunction(id=>globalThis.designSpaceDiagnostics.nodes.find(n=>n.id===id)?.type==='Rectangle',node.id);

@@ -110,7 +110,8 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         if(n.Get("{https://designspace.dev/designer}TemplateExpanded")=="True")return;
         var property=n.Type is "Rectangle" or "Ellipse" or "Path" or "Polygon" or "Polyline" ? "Fill" : "Background";
         var fill=Color(n.Get(property),n.Type is "Page" or "Window" or "UserControl" ? SKColors.White : SKColors.Transparent);
-        using var shader=Brush(n,property,b,_resources);_fill.Color=shader is null ? fill : SKColors.White;_fill.Shader=shader;
+        var pathShape=n.Type is "Path" or "Polygon" or "Polyline";
+        using var shader=Brush(n,property,pathShape ? SKRect.Create(0,0,b.Width,b.Height) : b,_resources);_fill.Color=shader is null ? fill : SKColors.White;_fill.Shader=shader;
         _stroke.Color=Color(n.Get("Stroke",n.Get("BorderBrush")),SKColors.Transparent);_stroke.StrokeWidth=(float)n.Number("StrokeThickness",n.Number("BorderThickness",1));
         var radius=(float)Numbers.Parse(n.Get("CornerRadius",n.Get("RadiusX")));
         if(n.Type=="Ellipse"){c.DrawOval(b,_fill);if(_stroke.Color.Alpha>0)c.DrawOval(b,_stroke);}
@@ -119,8 +120,10 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         {
             var geometry=n.Type=="Path" ? VectorGeometry.ReadPath(n) : VectorGeometry.Local(n,new(b.Width,b.Height));
             var mapping=n.Type=="Path" ? VectorGeometry.Mapping(n,new(b.Width,b.Height),geometry) : DMatrix.Identity;
-            var path=_paths.Get(geometry,DMatrix.Translate(b.Left,b.Top)*mapping);
-            c.DrawPath(path,_fill);if(_stroke.Color.Alpha>0)c.DrawPath(path,_stroke);
+            var path=_paths.Get(geometry,mapping);
+            c.Save();c.Translate(b.Left,b.Top);
+            try{c.DrawPath(path,_fill);if(_stroke.Color.Alpha>0)c.DrawPath(path,_stroke);}
+            finally{c.Restore();}
         }
         else{if(fill.Alpha>0||shader is not null)c.DrawRoundRect(b,radius,radius,_fill);if(_stroke.Color.Alpha>0)c.DrawRoundRect(b,radius,radius,_stroke);}
         _fill.Shader=null;
