@@ -29,10 +29,15 @@ public sealed class VisualStatePreview
         _readOnlyNames=new ReadOnlyDictionary<string,string>(_names);
     }
     private static void Time(double time){if(!double.IsFinite(time)||time<0)throw new ArgumentOutOfRangeException(nameof(time));}
-    public bool IsRunning(double time){Time(time);return _runs.Values.Any(r=>r.Duration>0&&time<r.Start+r.Duration);}
+    public bool IsRunning(double time)
+    {
+        Time(time);foreach(var run in _runs.Values)if(run.Duration>0&&time<run.Start+run.Duration)return true;return false;
+    }
     public double Progress(double time)
     {
-        Time(time);return _runs.Count==0 ? 1 : _runs.Values.Min(r=>r.Duration==0 ? 1 : Math.Clamp((time-r.Start)/r.Duration,0,1));
+        Time(time);var progress=1d;
+        foreach(var run in _runs.Values)if(run.Duration>0)progress=Math.Min(progress,Math.Clamp((time-run.Start)/run.Duration,0,1));
+        return progress;
     }
     public bool GoToState(string name,double time,bool useTransitions=true)
     {

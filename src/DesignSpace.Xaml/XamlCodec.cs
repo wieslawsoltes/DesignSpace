@@ -139,6 +139,22 @@ public static class NativeDocumentCodec
     public static DesignDocument Read(string text)
     {
         if(text.Length>XamlCodec.MaxCharacters) throw new InvalidDataException("Document is too large.");
-        var doc=JsonSerializer.Deserialize(text,NativeDocumentJsonContext.Default.DesignDocument) ?? throw new InvalidDataException("Empty document."); DocumentValidator.Validate(doc); return doc;
+        using var json=JsonDocument.Parse(text,new JsonDocumentOptions { MaxDepth=256 });
+        var doc=json.RootElement.Deserialize(NativeDocumentJsonContext.Default.DesignDocument) ?? throw new InvalidDataException("Empty document.");
+        // Source-generated init-property construction can assign CLR defaults for absent fields.
+        // Migrate only NEW, absent version-1 metadata; explicit nulls remain validation errors.
+        if(!json.RootElement.TryGetProperty("stateGroups",out _))doc=doc with { StateGroups=[] };
+        if(!doc.States.IsDefault && json.RootElement.TryGetProperty("states",out var states) && states.ValueKind==JsonValueKind.Array)
+        {
+            ImmutableArray<DesignState>.Builder? migrated=null;var index=0;
+            foreach(var state in states.EnumerateArray())
+            {
+                if(state.ValueKind==JsonValueKind.Object && !state.TryGetProperty("group",out _) && doc.States[index] is { } value)
+                { migrated ??=doc.States.ToBuilder();migrated[index]=value with { Group=VisualStateGroups.DefaultName }; }
+                index++;
+            }
+            if(migrated is not null)doc=doc with { States=migrated.ToImmutable() };
+        }
+        DocumentValidator.Validate(doc);return doc;
     }
 }

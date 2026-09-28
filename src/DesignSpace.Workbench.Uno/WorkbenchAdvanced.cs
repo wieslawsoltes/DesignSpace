@@ -15,6 +15,7 @@ public interface IWorkbenchAssetPlatform
 public sealed partial class WorkbenchView
 {
     private TemplateEditorControl? _templateEditor;
+    private StateTransitionEditorControl? _stateTransitions;
     private StoryboardInspectorControl? _storyboardInspector;
     private LayoutAuthoringControl? _layoutAuthoring;
     /// <summary>Installs the reusable template/layout panels and host-dependent image import command.</summary>
@@ -25,11 +26,13 @@ public sealed partial class WorkbenchView
         _templateEditor=new(Session);_templateEditor.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Templates",_templateEditor);
         _storyboardInspector=new(Session,Timeline);_storyboardInspector.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Timing",_storyboardInspector);
         Timeline.SettingsRequested+=OpenTiming;
+        _stateTransitions=new(Session,States);_rightTabs.Add("Transitions",_stateTransitions);States.TransitionEditorRequested+=OpenTransitions;
         _rightTabs.Add("Paths",new PathToolsControl(Designer));
         _layoutAuthoring=new(Session);_layoutAuthoring.Error+=(_,error)=>SetStatus(error,true);_leftTabs.Add("Layout",_layoutAuthoring);
         var toolbar=Children.OfType<StackPanel>().FirstOrDefault(p=>GetRow(p)==2);
         if(toolbar is not null)
         {
+            toolbar.Children.Add(new StudioButton("Transitions",()=>_rightTabs.Select("Transitions"),"Open Transitions panel"));
             toolbar.Children.Add(new StudioButton("Paths",()=>_rightTabs.Select("Paths"),"Open Paths panel"));
             toolbar.Children.Add(new StudioButton("Import image",()=>_=GuardAsync(ImportImageAsync),"Import image"));
             toolbar.Children.Add(new StudioButton("Templates",()=>_rightTabs.Select("Templates"),"Open Templates panel"));
@@ -38,10 +41,11 @@ public sealed partial class WorkbenchView
         Designer.InvalidateLayout();
     }
     private void OpenTiming(object? sender,EventArgs args)=>_rightTabs.Select("Timing");
-    private void StopAnimationForEditing(object? sender,EventArgs args)=>Timeline.Stop();
+    private void OpenTransitions(object? sender,EventArgs args)=>_rightTabs.Select("Transitions");
+    private void StopAnimationForEditing(object? sender,EventArgs args){States.StopTransitions(false);Timeline.Stop();}
     public void DisposeAdvancedTools()
     {
-        Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
+        States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
     }
     public async Task ImportImageAsync()
     {
