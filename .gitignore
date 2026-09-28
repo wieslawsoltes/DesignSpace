@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+artifacts/
+.vs/
+.idea/
+node_modules/
+*.user
+*.nupkg
+*.snupkg
+.DS_Store

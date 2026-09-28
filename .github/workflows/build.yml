@@ -1,0 +1,38 @@
+name: Build and test
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify current dependency versions
+        run: |
+          python3 - <<'PY'
+          import json, urllib.request
+          for package in ['uno.sdk','uno.winui','skiasharp']:
+              data=json.load(urllib.request.urlopen(f'https://api.nuget.org/v3-flatcontainer/{package}/index.json'))
+              versions=[v for v in data['versions'] if '-' not in v]
+              print(package, 'latest stable NuGet:', versions[-1], flush=True)
+          PY
+      - run: dotnet run --project tests/DesignSpace.Tests -c Release
+      - name: Pack portable libraries
+        run: |
+          for name in Core Engine Animation; do
+            dotnet pack src/DesignSpace.$name -c Release -o artifacts/packages
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-packages
+          path: artifacts/packages

@@ -1,0 +1,1 @@
+<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework><IsPackable>true</IsPackable><Description>Deterministic keyframe interpolation, easing, visual-state overlays and storyboard editing.</Description></PropertyGroup><ItemGroup><ProjectReference Include="../DesignSpace.Core/DesignSpace.Core.csproj" /></ItemGroup></Project>
