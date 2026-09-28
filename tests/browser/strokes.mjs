@@ -49,6 +49,20 @@ export async function strokes({page,snapshot,click,check,directory}) {
   await check('native picking selects painted strokes but not their gaps',async()=>{
     await tap(140,160);await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.selection.length===0);await selected();const s=await snapshot();assert.equal(s.selection[0],'StrokeFixture');
   });
+  await check('blank gap clicks and pointer jitter do not become rectangle selections',async()=>{
+    const before=await snapshot();await tap(140,160);
+    await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.selection.length===0);
+    const p=await point(140,160);await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x+1,p.y+1);await page.mouse.up();await wait();
+    assert.equal((await snapshot()).selection.length,0);assert.equal((await snapshot()).revision,before.revision);
+    await selected();await page.keyboard.down('Control');await tap(140,160);await page.keyboard.up('Control');await wait();
+    assert.deepEqual((await snapshot()).selection,['StrokeFixture']);assert.equal((await snapshot()).revision,before.revision);
+  });
+  await check('an intentional marquee still selects the stroked object',async()=>{
+    const before=await snapshot(),a=await point(90,140),b=await point(520,180);
+    await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:8});await page.mouse.up();
+    await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.selection.includes('StrokeFixture'));
+    assert.equal((await snapshot()).revision,before.revision);await selected();
+  });
   await check('stroke outlines are reused across repaint, zoom and picking',async()=>{
     const count=(await snapshot()).rendering.strokeBuilds;await click('Zoom in');await click('Zoom out');await selected();const s=await snapshot();assert.equal(s.rendering.strokeBuilds,count);assert.ok(s.rendering.strokeCacheHits>0);assert.ok(s.rendering.strokeCacheBytes<=16*1024*1024);await click('Fit artboard');
   });
