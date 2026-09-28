@@ -17,6 +17,8 @@ Create controls from Assets or draw shapes on the artboard. Select, move, resize
 
 Draw editable vector paths with **Pen (P)** and **Pencil (Y)**, then use **Direct Selection (A)** to edit anchors and tangent handles. Shift-select or marquee multiple anchors, drag or nudge them together, and align, distribute or delete the selection in one undoable edit. Ctrl+A selects all points in the current Path; Escape cancels a live point edit. Insert and delete points, split contours by deleting segments, switch line/curve segments, or convert basic shapes to paths without losing object identity. **Paths** exposes Unite, Intersect, Subtract, Exclude, two-shape Divide, compound paths and geometric clipping. These commands produce editable vector data, not raster snapshots.
 
+**Stroke** adds draft-safe multi-shape editing of thickness, independent line caps, dash patterns/offset, joins and miter limits. Solid, dash and dot presets share native outline geometry with painting and picking, so visible dash gaps do not select the stroke. Zero-width strokes are absent rather than hairlines. Convert supported solid strokes into editable filled paths with undo. See [stroke authoring and reusable APIs](docs/strokes.md) for limits and integration.
+
 XAML drafts are isolated from the current document until explicitly applied. Invalid drafts remain editable, stale revisions are rejected, and named elements retain their identity during source reconciliation. Imported XAML is data: no assemblies or arbitrary markup extensions execute.
 
 Create numeric keyframes for position, size, opacity and rotation. Scrub the original keyframe interval or configure delay, speed, auto-reverse, repeat count/duration/forever and HoldEnd/Stop playback in Timing. Duration changes can proportionally retime keys; shortening without scaling rejects excluded keys instead of dropping them.
@@ -35,7 +37,7 @@ Save native `.designspace` files, export XAML or a 2× PNG, and recover the last
 | `DesignSpace.Xaml` | Inert XAML codec, trim-safe native persistence and JSON sample data |
 | `DesignSpace.Rendering.Skia` | Host-owned canvas rendering, viewport, adorners and PNG export |
 | `DesignSpace.Docking.Uno` | Compact theme, tabs, splitters and floating panes |
-| `DesignSpace.Controls.Uno` | Artboard, outline, properties, source, timeline/timing, states, templates, layout, assets, resources and data controls |
+| `DesignSpace.Controls.Uno` | Artboard, outline, properties, source, timeline/timing, states, templates, layout, stroke, assets, resources and data controls |
 | `DesignSpace.Workbench.Uno` | Embeddable workbench and platform-service boundary |
 
 Portable packages target .NET 10. Uno libraries target desktop and WebAssembly. The application is a separate thin host. CI generates packages; nothing is automatically published to NuGet.org.

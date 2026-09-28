@@ -4,10 +4,11 @@ DesignSpace is an independent Blend-style designer. Familiar panels do not imply
 
 | Area | Implemented | Remaining boundary |
 | --- | --- | --- |
-| Workspace | Dark tools, Assets, Project, States, Data, Layout, Objects, Properties, Resources, Templates, Timing, Paths, Transitions and design/split/source views | Desktop-oriented density; no pixel-exact Blend, complete accessibility or mobile/touch qualification |
+| Workspace | Dark tools, Assets, Project, States, Data, Layout, Objects, Properties, Resources, Templates, Timing, Paths, Transitions, Stroke and design/split/source views | Desktop-oriented density; no pixel-exact Blend, complete accessibility or mobile/touch qualification |
 | Docking | Resizable columns/stacked panes, tabs, hide/show/reset and in-application floating/dragging | No arbitrary docking graph, native floating windows, cross-window transfer or persisted floating coordinates |
 | Visual editing | Creation, selection, Canvas move/resize, snapping, grouping, duplication, alignment, distribution, z-order, history and Canvas reparenting APIs | Grouping requires contiguous Canvas siblings; arbitrary panel reparenting and complete transformed editing remain unfinished |
-| Picking | Inherited transforms, ellipse/path fill and stroke checks, fill-rule holes, own/ancestor geometry clipping, visibility and lock inheritance | Curves use bounded adaptive tessellation for picking; this is not pixel-exact runtime stroke/effect picking |
+| Picking | Inherited transforms, native fill/stroke outline picking in the Skia host, real dash gaps/caps, fill-rule holes, clipping, visibility and locks | Portable snapshots without `IShapeHitTest` retain approximate picking; this is not pixel-exact Microsoft runtime/effect picking |
+| Strokes | Independent Flat/Square/Round/Triangle caps, dash patterns/offset, zero-length dots, Miter/Bevel/Round joins, miter limits, shared cached outlines and guarded stroke-to-path conversion; atomic draft-safe multi-shape editor | No pressure brushes, inside/outside alignment, full intrinsic stroke sizing or all degenerate zero-contour cases; floating-point/numerical curve measurement is not WPF differential qualification |
 | Geometry | Pen and Pencil drawing, Direct Selection multi-anchor marquees, batch move/delete, alignment/distribution, tangents, exact Bezier subdivision, point/segment removal, line/curve conversion, shape conversion, compound paths, fill rules and native vector booleans | Point selection is scoped to one Path; no multi-object point selection, persistent tangent modes, pressure brushes, arc-radius handles or mesh editing; Divide takes two shapes |
 | Geometry formats | Finite M/L/H/V/C/S/Q/T/A/Z and F0/F1 data; common PathGeometry/PathFigure/segment objects; explicit Line endpoints; Auto path bounds; None/Fill/Uniform/UniformToFill | No arbitrary geometry groups, per-segment stroke/join metadata, geometry transforms or reference resolution; unsupported object markup remains preserved, not silently converted |
 | Geometric clipping | Make a clip from the top selected vector shape, release/undo it, and render/pick own and ancestor clips; literal path and simple RectangleGeometry/EllipseGeometry/PathGeometry clips | Geometry clipping is not an opacity mask; arbitrary GeometryGroup, animated clips and all runtime effects are unfinished |
@@ -23,6 +24,10 @@ DesignSpace is an independent Blend-style designer. Familiar panels do not imply
 | XAML | Inert validated import, isolated source drafts, named identity reconciliation, supported timing/state export and retained property elements | Not lossless XML: formatting, comments and mixed text are not preserved exactly; export is Uno/WinUI-oriented, not qualified across WPF versions |
 | Files/project | Native `.designspace`, XAML and PNG export, consistent browser upload/copy import and local recovery | No solution/project compilation, debugger, multi-document project system, Git integration or cloud synchronization |
 | Collaboration | Local editing requires no service/account | No multi-user synchronization, authentication, permissions or enterprise administration |
+
+## Stroke authoring
+
+Use **Stroke** to edit base stroke settings, preview drafts, and apply changed fields in one transaction. Invalid or stale drafts cannot overwrite the document. The native renderer and picker share the outline, including dash gaps and independent caps. Empty Brush removes the stroke; Transparent remains hittable, while a null brush and Width zero do not. Outline conversion retains identity and undo, but protects filled, locked, style-dependent and animation/state-linked objects. See [stroke semantics, limits and host contracts](strokes.md).
 
 ## Vector authoring
 

@@ -154,6 +154,6 @@ public sealed class LayoutEngine(ITextMetrics? metrics=null)
         }
         var size=new DSize(root.Number("Width",960),root.Number("Height",640));
         Walk(root,new(0,0,size.Width,size.Height),0,null,1,DMatrix.Identity,false,true,true);
-        return new(entries);
+        return new(entries,_metrics as IShapeHitTest);
     }
 }

@@ -89,7 +89,7 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
                 if(VectorGeometry.ReadClip(n) is { } clip)c.ClipPath(_paths.Get(clip,DMatrix.Translate(b.Left,b.Top)),SKClipOperation.Intersect,true);
             }
             catch(InvalidDataException ex){if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);c.RestoreToCount(outerCount);return;}
-            if(n.Type is "Path" or "Polygon" or "Polyline" || !c.QuickReject(b))
+            if(VectorGeometry.IsShape(n) || !c.QuickReject(b))
             {
                 var nodeCount=c.SaveCount;
                 try{DrawNode(c,entry);LastDrawnNodes++;}
@@ -106,26 +106,16 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
     }
     private void DrawNode(SKCanvas c,LayoutEntry entry)
     {
-        var n=entry.Node;var b=Rect(entry.Bounds);if(b.Width<=0||b.Height<=0)return;
+        var n=entry.Node;var b=Rect(entry.Bounds);
+        if(VectorGeometry.IsShape(n)){DrawShape(c,entry);return;}
+        if(b.Width<=0||b.Height<=0)return;
         if(n.Get("{https://designspace.dev/designer}TemplateExpanded")=="True")return;
-        var property=n.Type is "Rectangle" or "Ellipse" or "Path" or "Polygon" or "Polyline" ? "Fill" : "Background";
-        var fill=Color(n.Get(property),n.Type is "Page" or "Window" or "UserControl" ? SKColors.White : SKColors.Transparent);
-        var pathShape=n.Type is "Path" or "Polygon" or "Polyline";
-        using var shader=Brush(n,property,pathShape ? SKRect.Create(0,0,b.Width,b.Height) : b,_resources);_fill.Color=shader is null ? fill : SKColors.White;_fill.Shader=shader;
-        _stroke.Color=Color(n.Get("Stroke",n.Get("BorderBrush")),SKColors.Transparent);_stroke.StrokeWidth=(float)n.Number("StrokeThickness",n.Number("BorderThickness",1));
-        var radius=(float)Numbers.Parse(n.Get("CornerRadius",n.Get("RadiusX")));
-        if(n.Type=="Ellipse"){c.DrawOval(b,_fill);if(_stroke.Color.Alpha>0)c.DrawOval(b,_stroke);}
-        else if(n.Type=="Line")c.DrawLine(b.Left+(float)n.Number("X1"),b.Top+(float)n.Number("Y1"),b.Left+(float)n.Number("X2",b.Width),b.Top+(float)n.Number("Y2",b.Height),_stroke);
-        else if(n.Type is "Path" or "Polygon" or "Polyline")
-        {
-            var geometry=n.Type=="Path" ? VectorGeometry.ReadPath(n) : VectorGeometry.Local(n,new(b.Width,b.Height));
-            var mapping=n.Type=="Path" ? VectorGeometry.Mapping(n,new(b.Width,b.Height),geometry) : DMatrix.Identity;
-            var path=_paths.Get(geometry,mapping);
-            c.Save();c.Translate(b.Left,b.Top);
-            try{c.DrawPath(path,_fill);if(_stroke.Color.Alpha>0)c.DrawPath(path,_stroke);}
-            finally{c.Restore();}
-        }
-        else{if(fill.Alpha>0||shader is not null)c.DrawRoundRect(b,radius,radius,_fill);if(_stroke.Color.Alpha>0)c.DrawRoundRect(b,radius,radius,_stroke);}
+        var fill=Color(n.Get("Background"),n.Type is "Page" or "Window" or "UserControl" ? SKColors.White : SKColors.Transparent);
+        using var shader=Brush(n,"Background",b,_resources);_fill.Color=shader is null ? fill : SKColors.White;_fill.Shader=shader;
+        _stroke.Color=Color(n.Get("BorderBrush"),SKColors.Transparent);_stroke.StrokeWidth=(float)n.Number("BorderThickness",1);
+        var radius=(float)Numbers.Parse(n.Get("CornerRadius"));
+        if(fill.Alpha>0||shader is not null)c.DrawRoundRect(b,radius,radius,_fill);
+        if(_stroke.Color.Alpha>0&&_stroke.StrokeWidth>0)c.DrawRoundRect(b,radius,radius,_stroke);
         _fill.Shader=null;
         if(n.Type is "TextBlock" or "Button" or "TextBox" or "ContentPresenter")
         {
@@ -160,5 +150,5 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         using var surface=SKSurface.Create(new SKImageInfo((int)w,(int)h));if(surface is null)throw new InvalidOperationException("Unable to allocate export surface.");
         surface.Canvas.Clear(SKColors.Transparent);surface.Canvas.Scale(scale);DrawScene(surface.Canvas,layout);using var image=surface.Snapshot();using var data=image.Encode(SKEncodedImageFormat.Png,100);return data.ToArray();
     }
-    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_text.Dispose();_images.Dispose();_children.Clear();_resources.Clear();_indexed=null;}
+    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_strokeShapes.Dispose();_shapePaint.Dispose();_shapeSources.Clear();_basicShapes.Clear();_text.Dispose();_images.Dispose();_children.Clear();_resources.Clear();_indexed=null;}
 }

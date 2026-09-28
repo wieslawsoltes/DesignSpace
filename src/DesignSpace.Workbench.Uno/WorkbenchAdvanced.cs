@@ -15,6 +15,7 @@ public interface IWorkbenchAssetPlatform
 public sealed partial class WorkbenchView
 {
     private TemplateEditorControl? _templateEditor;
+    private StrokeEditorControl? _strokeEditor;
     private StateTransitionEditorControl? _stateTransitions;
     private StoryboardInspectorControl? _storyboardInspector;
     private LayoutAuthoringControl? _layoutAuthoring;
@@ -28,10 +29,15 @@ public sealed partial class WorkbenchView
         Timeline.SettingsRequested+=OpenTiming;
         _stateTransitions=new(Session,States);_rightTabs.Add("Transitions",_stateTransitions);States.TransitionEditorRequested+=OpenTransitions;
         _rightTabs.Add("Paths",new PathToolsControl(Designer));
+        _strokeEditor=new(Session){CanEditBase=()=>!States.IsRecording&&!Timeline.IsRecording};
+        _strokeEditor.Error+=(_,error)=>SetStatus(error,true);
+        _strokeEditor.OutlineRequested+=(_,_)=>StrokeCommands.Outline(Session,Designer.Layout);
+        _rightTabs.Add("Stroke",_strokeEditor);
         _layoutAuthoring=new(Session);_layoutAuthoring.Error+=(_,error)=>SetStatus(error,true);_leftTabs.Add("Layout",_layoutAuthoring);
         var toolbar=Children.OfType<StackPanel>().FirstOrDefault(p=>GetRow(p)==2);
         if(toolbar is not null)
         {
+            toolbar.Children.Add(new StudioButton("Stroke",()=>_rightTabs.Select("Stroke"),"Open Stroke panel"));
             toolbar.Children.Add(new StudioButton("Transitions",()=>_rightTabs.Select("Transitions"),"Open Transitions panel"));
             toolbar.Children.Add(new StudioButton("Paths",()=>_rightTabs.Select("Paths"),"Open Paths panel"));
             toolbar.Children.Add(new StudioButton("Import image",()=>_=GuardAsync(ImportImageAsync),"Import image"));
@@ -45,7 +51,7 @@ public sealed partial class WorkbenchView
     private void StopAnimationForEditing(object? sender,EventArgs args){States.StopTransitions(false);Timeline.Stop();}
     public void DisposeAdvancedTools()
     {
-        States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
+        _strokeEditor?.Dispose();States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
     }
     public async Task ImportImageAsync()
     {
