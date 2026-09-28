@@ -7,13 +7,15 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 namespace DesignSpace.Controls.Uno;
 
+/// <summary>Selection-aware property editing with revision-guarded, exactly-once commits.</summary>
 public sealed class PropertyInspector : Grid,IDisposable
 {
     private readonly DesignSession _session;
     private readonly StackPanel _body=new(){Spacing=2,Padding=new Thickness(7,4,7,12)};
     private readonly TextBox _search=StudioTheme.Input("","Search properties");
-    private readonly Dictionary<string,TextBox> _fields=[];
     private bool _refreshing;
+    private DesignDocument? _displayed;
+    private ImmutableHashSet<Guid> _selection=[];
     public string ActiveProperty { get; private set; }="Opacity";
     public event EventHandler<(string Property,string Value)>? PropertyEdited;
     public event EventHandler<string>? ActivePropertyChanged;
@@ -25,14 +27,18 @@ public sealed class PropertyInspector : Grid,IDisposable
         var scroll=new ScrollViewer { Content=_body,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled }; SetRow(scroll,1); Children.Add(scroll);
         _session.SelectionChanged+=Changed; _session.DocumentChanged+=Changed; Refresh();
     }
-    private void Changed(object? sender,EventArgs e)=>Refresh();
+    private void Changed(object? sender,EventArgs e)
+    {
+        if(ReferenceEquals(_displayed,_session.Document) && _selection.SetEquals(_session.Selection)) return;
+        Refresh();
+    }
     public void Refresh()
     {
         if(_refreshing) return; _refreshing=true;
         try
         {
-            _body.Children.Clear(); _fields.Clear();
-            var nodes=_session.Selection.Select(id=>_session.Document.Root.Find(id)).OfType<DesignNode>().ToArray();
+            _displayed=_session.Document; _selection=_session.Selection; _body.Children.Clear();
+            var nodes=_selection.Select(id=>_session.Document.Root.Find(id)).OfType<DesignNode>().ToArray();
             if(nodes.Length==0) { _body.Children.Add(StudioTheme.Text("Select an object to edit its properties.",11,"#99999F")); return; }
             var n=nodes[0];
             _body.Children.Add(StudioTheme.Text(nodes.Length==1 ? "Type   "+n.Type : nodes.Length+" objects selected",11,"#AFAFB6"));
@@ -59,18 +65,20 @@ public sealed class PropertyInspector : Grid,IDisposable
         }
         finally { _refreshing=false; }
     }
-    private string Common(DesignNode[] nodes,string key,string fallback="")=>nodes.Select(n=>n.Get(key,fallback)).Distinct().Count()==1 ? nodes[0].Get(key,fallback) : "<multiple>";
-    private void Section(string title)
-    {
-        var row=new Border { Background=StudioTheme.Brush("#2C2C2F"),Margin=new Thickness(-3,6,-3,2),Padding=new Thickness(3,4,3,4),Child=StudioTheme.Text("▾  "+title,11) }; _body.Children.Add(row);
-    }
+    private static string Common(DesignNode[] nodes,string key,string fallback="")=>nodes.Select(n=>n.Get(key,fallback)).Distinct().Count()==1 ? nodes[0].Get(key,fallback) : "<multiple>";
+    private void Section(string title)=>_body.Children.Add(new Border { Background=StudioTheme.Brush("#2C2C2F"),Margin=new Thickness(-3,6,-3,2),Padding=new Thickness(3,4,3,4),Child=StudioTheme.Text("▾  "+title,11) });
     private void AddField(string label,string key,string value,bool readOnly=false)
     {
         if(_search.Text.Length>0 && !label.Contains(_search.Text,StringComparison.OrdinalIgnoreCase) && !key.Contains(_search.Text,StringComparison.OrdinalIgnoreCase)) return;
         var row=new Grid { MinHeight=24 }; row.ColumnDefinitions.Add(new(){Width=new GridLength(104)}); row.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});
-        row.Children.Add(StudioTheme.Text(label,11,"#BABAC0")); var input=StudioTheme.Input(value,"Property "+label); input.IsReadOnly=readOnly; SetColumn(input,1); row.Children.Add(input); _fields[key]=input; _body.Children.Add(row);
+        row.Children.Add(StudioTheme.Text(label,11,"#BABAC0")); var input=StudioTheme.Input(value,"Property "+label); input.IsReadOnly=readOnly; SetColumn(input,1); row.Children.Add(input); _body.Children.Add(row);
+        var revision=_session.Revision; var targets=_session.Selection; var committed=value;
         input.GotFocus+=(_,_)=> { ActiveProperty=key; ActivePropertyChanged?.Invoke(this,key); };
-        void Commit() { if(_refreshing || input.Text==value || input.Text=="<multiple>") return; Edit(key,input.Text); }
+        void Commit()
+        {
+            if(_refreshing || readOnly || _session.Revision!=revision || !targets.SetEquals(_session.Selection) || input.Text==committed || input.Text=="<multiple>") return;
+            committed=input.Text; Edit(key,committed);
+        }
         input.LostFocus+=(_,_)=>Commit(); input.KeyDown+=(_,e)=> { if(e.Key==Windows.System.VirtualKey.Enter) { Commit(); e.Handled=true; } };
     }
     private void Edit(string key,string value)
@@ -83,14 +91,15 @@ public sealed class PropertyInspector : Grid,IDisposable
         if(mode is "None" or "Solid") { Edit(property,mode=="None" ? "Transparent" : "#FF0078D4"); return; }
         try
         {
-            var ns=(XNamespace)DesignNode.PresentationNamespace;
-            var ids=_session.Selection.ToArray();
+            var ns=(XNamespace)DesignNode.PresentationNamespace; var ids=_session.Selection.ToArray();
             _session.Execute("Set "+mode+" brush",d=>
             {
                 var root=d.Root;
                 foreach(var id in ids) root=root.Update(id,n=>
                 {
-                    var brush=new XElement(ns+(mode+"GradientBrush"),new XElement(ns+"GradientStop",new XAttribute("Color",n.Get(property,"#FF0078D4")),new XAttribute("Offset","0")),new XElement(ns+"GradientStop",new XAttribute("Color","#FFFFFFFF"),new XAttribute("Offset","1")));
+                    if(n.IsLocked) return n;
+                    var color=n.Get(property,"#FF0078D4"); if(color.StartsWith('{')) color="#FF0078D4";
+                    var brush=new XElement(ns+(mode+"GradientBrush"),new XElement(ns+"GradientStop",new XAttribute("Color",color),new XAttribute("Offset","0")),new XElement(ns+"GradientStop",new XAttribute("Color","#FFFFFFFF"),new XAttribute("Offset","1")));
                     var element=new XElement(ns+(n.Type+"."+property),brush);
                     return n with { Properties=n.Properties.Remove(property),PropertyElements=n.PropertyElements.Where(p=>!p.Contains("."+property,StringComparison.Ordinal)).Append(element.ToString(SaveOptions.DisableFormatting)).ToImmutableArray() };
                 });

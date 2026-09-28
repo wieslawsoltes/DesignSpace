@@ -20,6 +20,9 @@ async function click(name) {
   await page.mouse.click(control.X+control.Width/2,control.Y+control.Height/2);
   await page.waitForTimeout(300);
 }
+async function replaceSource(text) {
+  await click('XAML source editor');await page.keyboard.press('Control+A');await page.keyboard.insertText(text);await page.waitForTimeout(350);
+}
 async function check(name,run) { await run();results.push(name);console.log('PASS',name); }
 try {
   await page.goto(base+'?diagnostics=1',{waitUntil:'domcontentloaded'});
@@ -45,15 +48,32 @@ try {
     await click('Undo');await page.waitForFunction(count=>globalThis.designSpaceDiagnostics.nodes.length===count,before.nodes.length);
     await click('Redo');await page.waitForFunction(count=>globalThis.designSpaceDiagnostics.nodes.length===count+1,before.nodes.length);
   });
-  await check('properties edit the selected shape',async()=>{
+  await check('property editing commits exactly once',async()=>{
+    const revision=(await snapshot()).revision;
     await click('Property Width');await page.keyboard.press('Control+A');await page.keyboard.insertText('144');await page.keyboard.press('Enter');
     await page.waitForFunction(()=>{const s=globalThis.designSpaceDiagnostics;return s.nodes.find(n=>n.name===s.selection[0])?.properties.Width==='144';});
+    await page.waitForTimeout(700);assert.equal((await snapshot()).revision,revision+1);
   });
+  await check('normalized source is not a false draft after visual edits',async()=>assert.equal((await snapshot()).sourceDirty,false));
   await check('native download is valid and complete JSON',async()=>{
-    const downloadPromise=page.waitForEvent('download');await click('Save design');const download=await downloadPromise;
+    const downloadPromise=page.waitForEvent('download',{timeout:15000});await click('Save design');const download=await downloadPromise;
     await download.saveAs(directory+'/saved.designspace');const doc=JSON.parse(await readFile(directory+'/saved.designspace','utf8'));
     const count=n=>1+n.children.reduce((sum,child)=>sum+count(child),0);
     assert.equal(doc.formatVersion,1);assert.equal(count(doc.root),before.nodes.length+1);assert.equal(doc.storyboards[0].tracks.length,2);
+  });
+  const sourceState=await snapshot();const validSource=sourceState.xaml;
+  const headline=sourceState.nodes.find(n=>n.properties.Text==='Ideas, brought to life.');assert.ok(headline);
+  await check('invalid source remains a draft without mutating the design',async()=>{
+    await click('XAML view');await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.mode==='XAML');
+    await replaceSource('<Canvas>');await click('Apply XAML');
+    const s=await snapshot();assert.equal(s.revision,sourceState.revision);assert.equal(s.sourceDirty,true);assert.equal(s.xaml,'<Canvas>');
+    await page.screenshot({path:directory+'/invalid-source.png'});
+  });
+  await check('valid source updates design and retains named identities',async()=>{
+    await replaceSource(validSource.replace('Ideas, brought to life.','Ideas, designed in DesignSpace.'));await click('Apply XAML');
+    await page.waitForFunction(()=>!globalThis.designSpaceDiagnostics.sourceDirty);
+    const s=await snapshot();const changed=s.nodes.find(n=>n.id===headline.id);assert.equal(changed.properties.Text,'Ideas, designed in DesignSpace.');assert.equal(s.timeline.tracks,2);
+    await page.screenshot({path:directory+'/source-editor.png'});await click('Design view');
   });
   await check('animation plays and stops',async()=>{
     await click('Play or pause storyboard');await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.timeline.time>0.1);
@@ -64,6 +84,7 @@ try {
     await page.waitForTimeout(1200);const prior=(await snapshot()).nodes.length;
     await page.reload({waitUntil:'domcontentloaded'});
     await page.waitForFunction(count=>globalThis.designSpaceDiagnostics?.ready&&globalThis.designSpaceDiagnostics.nodes.length===count,prior,{timeout:180000});
+    const s=await snapshot();assert.ok(s.nodes.some(n=>n.properties.Text==='Ideas, designed in DesignSpace.'));assert.equal(s.sourceDirty,false);
   });
   await check('no application exceptions or serialization errors',async()=>{assert.deepEqual(errors,[]);assert.ok(!log.some(s=>s.startsWith('error: [DesignSpace')));});
   await page.screenshot({path:directory+'/workspace-edited.png'});
