@@ -17,22 +17,28 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Verify current dependency versions
-        run: |
-          python3 - <<'PY'
-          import json, urllib.request
-          for package in ['uno.sdk','uno.winui','skiasharp']:
-              data=json.load(urllib.request.urlopen(f'https://api.nuget.org/v3-flatcontainer/{package}/index.json'))
-              versions=[v for v in data['versions'] if '-' not in v]
-              print(package, 'latest stable NuGet:', versions[-1], flush=True)
-          PY
       - run: dotnet run --project tests/DesignSpace.Tests -c Release
       - name: Pack portable libraries
         run: |
-          for name in Core Engine Animation; do
+          for name in Core Engine Animation Xaml Rendering.Skia; do
             dotnet pack src/DesignSpace.$name -c Release -o artifacts/packages
           done
       - uses: actions/upload-artifact@v4
         with:
           name: portable-packages
           path: artifacts/packages
+          if-no-files-found: error
+  controls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', '**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+      - run: dotnet build src/DesignSpace.Controls.Uno -c Release -f net10.0-desktop -p:DesignSpaceTargetFrameworks=net10.0-desktop
