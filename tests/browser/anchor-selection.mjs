@@ -18,6 +18,8 @@ export async function anchorSelection({page,snapshot,click,check,directory}) {
   }
   async function command(name){
     await click('Open Paths panel');
+    // A panel switch may settle after the previous diagnostics sample.
+    await page.waitForFunction(name=>globalThis.designSpaceDiagnostics?.controls.some(c=>c.Name==='Path '+name),name,{timeout:15000});
     for(let i=0;i<8;i++){
       const s=await snapshot(),c=s.controls.find(c=>c.Name==='Path '+name);assert.ok(c,`Path command ${name}`);
       if(c.Y>115&&c.Y+c.Height<s.height-55){await click('Path '+name);return;}
