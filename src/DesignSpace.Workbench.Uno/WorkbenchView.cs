@@ -122,8 +122,8 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     {
         UpdateTitle(); Source.Synchronize(Session.Document,Session.Revision); Designer.InvalidateLayout();
         if(States.TargetState is not null) Designer.SetPreview(null,0,States.TargetState);
-        var context=States.SelectedState is { } selected ? (States.IsRecording ? "Recording state: " : "Preview state: ")+selected.Name : "";
-        if(Properties.EditingContext!=context || Properties.AllowInlineBrushEditing==States.IsRecording)
+        var context=StateEditingContext;
+        if(States.TargetState is not null || Properties.EditingContext!=context || Properties.AllowInlineBrushEditing==States.IsRecording)
         {
             Properties.EditingContext=context;Properties.AllowInlineBrushEditing=!States.IsRecording;Properties.Refresh();
         }

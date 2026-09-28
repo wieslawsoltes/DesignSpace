@@ -35,7 +35,7 @@ public sealed class StateTransitionEditorControl : ScrollViewer,IDisposable
         Label("Duration in seconds / cubic easing");var timing=new StackPanel{Orientation=Orientation.Horizontal,Spacing=4};timing.Children.Add(_duration);timing.Children.Add(_easing);body.Children.Add(timing);AutomationProperties.SetName(_easing,"Transition easing");
         Row(("Save rule","Save visual transition",Save),("Remove","Remove visual transition",Remove),("Reload","Reload visual transition draft",Reload));
         Row(("Preview on/off","Toggle transition preview in editor",()=>states.SetTransitionsEnabled(!states.TransitionsEnabled)),("Stop","Complete visual transitions",()=>states.StopTransitions()));
-        Label("Select a saved rule to edit it. Enable Transitions in States, then select states to preview. Recording or editing the document completes the preview without writing animation frames to history.");
+        Label("Select a saved rule to edit it. Enable Animate in States, then select states to preview. Recording or editing the document completes the preview without writing animation frames to history.");
         body.Children.Add(_rules);_message.TextWrapping=TextWrapping.Wrap;body.Children.Add(_message);
         foreach(var input in new[]{_group,_from,_to,_duration})input.TextChanged+=(_,_)=>{if(!_refreshing)_dirty=true;};
         _easing.SelectionChanged+=(_,_)=>{if(!_refreshing)_dirty=true;};
@@ -54,7 +54,7 @@ public sealed class StateTransitionEditorControl : ScrollViewer,IDisposable
         _rules.Children.Clear();var group=VisualStateGroups.Get(_session.Document).FirstOrDefault(g=>g.Name==_states.SelectedGroup);
         foreach(var rule in group?.Transitions??[])
         {
-            var label=(rule.From??"*")+" → "+(rule.To??"*")+"   "+Numbers.Format(rule.Duration)+"s · "+rule.Easing;
+            var label=(rule.From??"Any")+" to "+(rule.To??"Any")+"   "+Numbers.Format(rule.Duration)+"s | "+rule.Easing;
             _rules.Children.Add(new StudioButton(label,()=>LoadRule(rule),"Edit visual transition "+(rule.From??"*")+" to "+(rule.To??"*")));
         }
         _revision=_session.Revision;_dirty=false;_refreshing=false;_message.Text="";

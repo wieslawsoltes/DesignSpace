@@ -51,8 +51,9 @@ public sealed class VisualStatePreview
         if(!_groups.TryGetValue(group,out var definition))throw new InvalidOperationException("The requested state group does not exist.");
         var previous=_runs.GetValueOrDefault(group);
         if(previous?.Target?.Name==target?.Name)return false;
-        var source=previous is null ? null : Sample(previous,time);
         var transition=useTransitions ? VisualStateGroups.Match(definition,previous?.Target?.Name,target?.Name) : null;
+        var duration=transition?.Duration??0;
+        var source=duration==0 || previous is null ? null : Sample(previous,time);
         var sourceValues=(source?.Setters ?? []).ToDictionary(s=>new Key(s.TargetId,s.Property));
         var targetValues=(target?.Setters ?? []).ToDictionary(s=>new Key(s.TargetId,s.Property));
         var keys=sourceValues.Keys.Concat(targetValues.Keys).ToHashSet();
@@ -63,16 +64,20 @@ public sealed class VisualStatePreview
         }
         DesignNode Resolve(DesignState? state)=>_resolver?.Invoke(AnimationEngine.EvaluateLocal(_document.Root,null,0,state)) ?? AnimationEngine.EvaluateLocal(_document.Root,null,0,state);
         // Resource/style resolution is performed once per state change, never on each sampled frame.
-        var start=DesignIndex.For(Resolve(source));var end=DesignIndex.For(Resolve(target));
-        var channels=keys.Select(key=>
+        Channel[] Compile()
         {
-            var a=Value(start.Find(key.Target),key.Property);var b=Value(end.Find(key.Target),key.Property);
-            double? na=null;var nb=0d;uint? ca=null;uint cb=0;
-            if(NumericProperty(key.Property)&&Number(a,out var number)&&Number(b,out nb))na=number;
-            if(ColorProperty(key.Property)&&TransitionColor.TryParse(a,out var color)&&TransitionColor.TryParse(b,out cb))ca=color;
-            return new Channel(key,a,na,nb,ca,cb);
-        }).ToArray();
-        _runs[group]=new(target,source,time,transition?.Duration ?? 0,transition?.Easing ?? "Linear",channels,keys);
+            var start=DesignIndex.For(Resolve(source));var end=DesignIndex.For(Resolve(target));
+            return keys.Select(key=>
+            {
+                var a=Value(start.Find(key.Target),key.Property);var b=Value(end.Find(key.Target),key.Property);
+                double? na=null;var nb=0d;uint? ca=null;uint cb=0;
+                if(NumericProperty(key.Property)&&Number(a,out var number)&&Number(b,out nb))na=number;
+                if(ColorProperty(key.Property)&&TransitionColor.TryParse(a,out var color)&&TransitionColor.TryParse(b,out cb))ca=color;
+                return new Channel(key,a,na,nb,ca,cb);
+            }).ToArray();
+        }
+        var channels=duration==0 ? [] : Compile();
+        _runs[group]=new(target,source,time,duration,transition?.Easing ?? "Linear",channels,keys);
         if(target is null)_names.Remove(group);else _names[group]=target.Name;
         _lastChange=time;_settled=false;_sampleTime=double.NaN;return true;
     }
@@ -117,6 +122,9 @@ public sealed class VisualStatePreview
     /// <summary>Completes all active transitions without changing document/history.</summary>
     public void Complete()
     {
+        var needsCompletion=false;
+        foreach(var run in _runs.Values)if(run.Duration!=0||run.Source is not null||run.Channels.Length>0){needsCompletion=true;break;}
+        if(!needsCompletion)return;
         foreach(var group in _runs.Keys.ToArray()){var run=_runs[group];_runs[group]=run with { Duration=0,Source=null,Channels=[],Keys=(run.Target?.Setters ?? []).Select(s=>new Key(s.TargetId,s.Property)).ToHashSet() };}
         _sampleTime=double.NaN;_settled=false;
     }
@@ -128,7 +136,7 @@ internal static class TransitionColor
     public static bool TryParse(string? text,out uint color)
     {
         color=0;if(string.IsNullOrWhiteSpace(text))return false;text=text.Trim();
-        if(text.Equals("Transparent",StringComparison.OrdinalIgnoreCase))return true;
+        if(text.Equals("Transparent",StringComparison.OrdinalIgnoreCase)){color=0x00ffffff;return true;}
         if(text.StartsWith('#'))
         {
             var hex=text[1..];if(hex.Length is 3 or 4)hex=string.Concat(hex.Select(c=>new string(c,2)));
@@ -144,7 +152,7 @@ internal static class TransitionColor
             var offset=values.Length==4 ? 1 : 0;var alpha=values.Length==4 ? (byte)Math.Round(Math.Clamp(numbers[0],0,1)*255) : (byte)255;
             color=(uint)(alpha<<24|Srgb(numbers[offset])<<16|Srgb(numbers[offset+1])<<8|Srgb(numbers[offset+2]));return true;
         }
-        var known=System.Drawing.Color.FromName(text);if(!known.IsKnownColor)return false;
+        var known=System.Drawing.Color.FromName(text);if(!known.IsKnownColor||known.IsSystemColor)return false;
         color=(uint)known.ToArgb();return true;
     }
     public static string Interpolate(uint a,uint b,double t)

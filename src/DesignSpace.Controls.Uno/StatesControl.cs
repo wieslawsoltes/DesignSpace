@@ -32,7 +32,7 @@ public sealed partial class StatesControl : Grid,IDisposable
     private void Changed(object? sender,EventArgs e){RebuildGroupPreview();Refresh();}
     private void Refresh()
     {
-        _states.Children.Clear(); var baseButton=new StudioButton("○   Base",()=>Select(null),"Preview base state") { Height=20,MinHeight=0,IsSelected=_selected is null,HorizontalAlignment=HorizontalAlignment.Stretch }; _states.Children.Add(baseButton);
+        _states.Children.Clear(); var baseButton=new StudioButton("Base",()=>Select(null),"Preview base state") { Height=20,MinHeight=0,IsSelected=ActiveStates.Count==0,HorizontalAlignment=HorizontalAlignment.Stretch }; _states.Children.Add(baseButton);
         foreach(var group in VisualStateGroups.Get(_session.Document))
         {
             var header=new StackPanel{Orientation=Orientation.Horizontal,Spacing=2};
@@ -41,7 +41,13 @@ public sealed partial class StatesControl : Grid,IDisposable
             foreach(var state in _session.Document.States.Where(s=>s.Group==group.Name))
             {
                 var active=ActiveStates.GetValueOrDefault(group.Name)==state.Name;
-                var button=new StudioButton((active ? "●   " : "○   ")+state.Name+"    "+state.Setters.Length+" setters",()=>Select(state.Name),"Preview state "+state.Name){Height=20,MinHeight=0,IsSelected=_selected==state.Name,HorizontalAlignment=HorizontalAlignment.Stretch};_states.Children.Add(button);
+                var content=new StackPanel{Orientation=Orientation.Horizontal,Spacing=6};
+                var selected=_selected==state.Name;
+                content.Children.Add(new Microsoft.UI.Xaml.Shapes.Ellipse { Width=6,Height=6,VerticalAlignment=VerticalAlignment.Center,
+                    Stroke=selected ? StudioTheme.Foreground : StudioTheme.Muted,StrokeThickness=1,
+                    Fill=active ? selected ? StudioTheme.Foreground : StudioTheme.Accent : StudioTheme.Brush("#00000000") });
+                content.Children.Add(StudioTheme.Text(state.Name+"    "+state.Setters.Length+" setters"));
+                var button=new StudioButton("",()=>Select(state.Name),"Preview state "+state.Name){Content=content,Height=20,MinHeight=0,IsSelected=selected,HorizontalAlignment=HorizontalAlignment.Stretch};_states.Children.Add(button);
             }
         }
         if(_selected is not null && SelectedState is null) {_selected=null;IsRecording=false;}
