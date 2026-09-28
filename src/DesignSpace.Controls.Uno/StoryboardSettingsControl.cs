@@ -31,7 +31,7 @@ public sealed class StoryboardSettingsControl : StackPanel
         _reverse=new CheckBox{Content="Auto reverse",IsChecked=storyboard.AutoReverse,MinHeight=28};AutomationProperties.SetName(_reverse,"Storyboard auto reverse");Children.Add(_reverse);
         _fill=new ComboBox{ItemsSource=new[]{"HoldEnd","Stop"},SelectedIndex=storyboard.FillBehavior=="Stop" ? 1 : 0,MinHeight=28,HorizontalAlignment=HorizontalAlignment.Stretch};
         AutomationProperties.SetName(_fill,"Storyboard fill behavior");Children.Add(StudioTheme.Text("After completion"));Children.Add(_fill);
-        _scale=new CheckBox{Content="Scale keyframes when changing duration",IsChecked=false,MinHeight=28};AutomationProperties.SetName(_scale,"Scale storyboard keyframes");Children.Add(_scale);
+        _scale=new CheckBox{Content="Scale existing keyframes",IsChecked=false,MinHeight=28};AutomationProperties.SetName(_scale,"Scale storyboard keyframes");Children.Add(_scale);
         var note=StudioTheme.Text("The timeline ruler stays in keyframe time. Playback applies delay, speed and repeats; scrubbing edits the original interval.",11,"#AAAAB3");note.TextWrapping=TextWrapping.Wrap;Children.Add(note);
         _error.TextWrapping=TextWrapping.Wrap;Children.Add(_error);
     }

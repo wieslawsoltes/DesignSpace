@@ -128,8 +128,11 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     {
         UpdateTitle(); Source.Synchronize(Session.Document,Session.Revision); Designer.InvalidateLayout();
         if(States.SelectedState is { } state) Designer.SetPreview(null,0,state);
-        Properties.EditingContext=States.SelectedState is { } selected ? (States.IsRecording ? "Recording state: " : "Preview state: ")+selected.Name : "";
-        Properties.AllowInlineBrushEditing=!States.IsRecording;Properties.Refresh();
+        var context=States.SelectedState is { } selected ? (States.IsRecording ? "Recording state: " : "Preview state: ")+selected.Name : "";
+        if(Properties.EditingContext!=context || Properties.AllowInlineBrushEditing==States.IsRecording)
+        {
+            Properties.EditingContext=context;Properties.AllowInlineBrushEditing=!States.IsRecording;Properties.Refresh();
+        }
         if(_initialized && !_loading) { _saveTimer.Stop(); _saveTimer.Start(); } Changed?.Invoke(this,EventArgs.Empty);
     }
     private void SelectionChanged(object? sender,EventArgs e)

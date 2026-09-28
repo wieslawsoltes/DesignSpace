@@ -28,6 +28,16 @@ try{
     for(let i=0;i<png.data.length;i+=4){const[r,g,b]=png.data.subarray(i,i+3);if(r>240&&g>240&&b>240)white++;if(b>140&&g>60&&r<60)blue++;}
     assert.ok(white>12000,`white pixels: ${white}`);assert.ok(blue>5000,`blue pixels: ${blue}`);
   });
+  await check('command vector icons render without symbol fonts',async()=>{
+    const s=await snapshot(),png=PNG.sync.read(await page.screenshot());
+    for(const name of ['Undo','Redo','Play or pause storyboard','Stop storyboard']){
+      const c=s.controls.find(c=>c.Name===name);assert.ok(c,`Command ${name}`);let ink=0;
+      for(let y=Math.ceil(c.Y+3);y<Math.floor(c.Y+c.Height-3);y++)for(let x=Math.ceil(c.X+3);x<Math.floor(c.X+c.Width-3);x++){
+        const i=(y*png.width+x)*4;if(png.data[i]>175&&png.data[i+1]>175&&png.data[i+2]>175)ink++;
+      }
+      assert.ok(ink>=8,`${name} icon ink: ${ink}`);
+    }
+  });
   const before=await snapshot();
   await check('pointer creates a rectangle',async()=>{
     await click('Tool Rectangle (R)');const v=(await snapshot()).surface;

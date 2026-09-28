@@ -78,3 +78,32 @@ The source editor keeps its own draft, canonical text and base revision. It comp
 Portable tests exercise editing, selection, layout, animation and transaction rollback. Compatibility tests exercise source generation, native and XAML round trips, strict preservation boundaries and non-executing sample data. The compatibility executable is also published trimmed with reflection serialization disabled and run again.
 
 Browser verification drives actual pointer/keyboard input. The opt-in `?diagnostics=1` snapshot exposes read-only model state and rendered control bounds; it contains no command dispatcher or test mutation API. CI retains screenshots, logs, state and test results to distinguish successful compilation from a functioning UI. Desktop compilation is tested independently on three operating systems.
+
+
+## Storyboard clocks and state authoring
+
+`StoryboardClock.Sample(board, elapsed)` is a deterministic, timer-free API returning local keyframe time, whether animation contributes, and completion state. `AnimationEngine.Evaluate` consumes elapsed playback time; `EvaluateLocal` samples the original keyframe interval directly. Keep these coordinates separate when building a timeline. `TimelineControl.PreviewStoryboard`/`PreviewTime` provide the appropriate preview pair for the existing designer-surface API.
+
+`StoryboardSettingsControl` produces an updated immutable storyboard without committing it. `StoryboardInspectorControl` composes it with a session and timeline, validates settings in a transaction, and rejects stale drafts. `AnimationEngine.ChangeDuration` either scales key times or rejects a duration that would exclude existing keys.
+
+`StateEditing.SetProperty` and `RemoveProperty` are portable, pure operations. Recording preserves the base root reference, respects inherited locks, validates supported values and avoids duplicate setters/no-op history. Preview coalesces state and animation values into one tree transformation. A recorded scalar brush replaces a conflicting inline brush only in the preview tree.
+
+```csharp
+var node = session.Document.Root.Children[0];
+var board = new DesignStoryboard(Guid.NewGuid(), "Entrance", 1,
+    [new(node.Id, "Opacity", [new(0, 0), new(1, 1, "EaseOut")])])
+{
+    BeginTime = 0.2,
+    SpeedRatio = 2,
+    AutoReverse = true,
+    RepeatCount = 3
+};
+var clock = StoryboardClock.Sample(board, elapsed: 0.7);
+var preview = AnimationEngine.Evaluate(session.Document.Root, board, 0.7);
+```
+
+## Cache and measurement contracts
+
+`SkiaTextService` owns reusable paints, font/shaper resources, a glyph-run LRU and a wrapped-line LRU. Keys include text, family/style, size and width as relevant. Entry count and estimated resource-cost budgets bound retention; they do not measure all managed/native allocator overhead. The service and its caches are UI-thread objects, not concurrent collections.
+
+`IStyledTextMetrics` lets a host measure the same font weight/style, wrapping and line-height settings it draws. `DesignRenderer` implements it so the layout engine no longer measures every styled node as plain text. The fallback portable metrics remain approximate. Warm-paragraph and cache-churn regressions check work avoidance, separately from elapsed-time benchmarks.
