@@ -52,7 +52,7 @@ internal static class BrushTests
         Test("duplicate offset is a hard edge",()=>{var b=Linear(new(0,"Black"),new(.5,"Black"),new(.5,"White"),new(1,"White"));Near(0,BrushEditing.Sample(b,.49).R);Near(1,BrushEditing.Sample(b,.5).R);});
         Test("adding a stop samples the existing gradient",()=>{var b=BrushEditing.AddStop(Linear(),.5);Check(b.Stops.Length==3);Near(.5,BrushColor.Parse(b.Stops[2].Color).R);});
         Test("reverse retains duplicate-edge ordering",()=>{var b=Linear(new(0,"Red"),new(.5,"Red"),new(.5,"Blue"),new(1,"Blue"));var r=BrushEditing.Reverse(b);Check(r.Stops[0].Color=="Blue"&&r.Stops[1].Color=="Blue"&&r.Stops[2].Color=="Red");});
-        Test("remove last stop yields transparent empty gradient",()=>Check(BrushEditing.RemoveStop(Linear(new(0,"Red")),0).Stops.IsEmpty));
+        Test("remove last stop yields transparent empty gradient",()=>Check(BrushEditing.RemoveStop(Linear(new DesignGradientStop(0,"Red")),0).Stops.IsEmpty));
         Test("atomic brush edit respects inherited locks",()=>{var d=Document(Rectangle());d=d with{Root=d.Root with{IsLocked=true}};Reject(()=>BrushEditing.Apply(d,[d.Root.Children[0].Id],"Fill",Linear()));});
         Test("brush edit changes only named property elements",()=>{var n=Rectangle() with{PropertyElements=[$"<Rectangle.Fill xmlns='{DesignNode.PresentationNamespace}'><SolidColorBrush Color='Red'/></Rectangle.Fill>",$"<Rectangle.Stroke xmlns='{DesignNode.PresentationNamespace}'><SolidColorBrush Color='Blue'/></Rectangle.Stroke>"]};var d=BrushEditing.Apply(Document(n),[n.Id],"Fill",Linear());Check(d.Root.Children[0].PropertyElements.Any(e=>XElement.Parse(e).Descendants().Any(c=>(string?)c.Attribute("Color")=="Blue")));Check(d.Root.Children[0].PropertyElements.Length==2);});
         Test("same brush application creates no history",()=>{var n=Rectangle();var d=BrushEditing.Apply(Document(n),[n.Id],"Fill",Linear());Check(ReferenceEquals(d,BrushEditing.Apply(d,[n.Id],"Fill",Linear())));});
@@ -66,7 +66,7 @@ internal static class BrushTests
         Test("brush and stop alpha multiply",()=>{using var p=Paint(Linear(new(0,"#80FF0000"),new(1,"#80FF0000")) with{Opacity=.5});Near(.25,p.GetPixel(50,20).Alpha/255d);});
         Test("solid brush opacity",()=>{using var p=Paint(new(){Kind=DesignBrushKind.Solid,Color="Blue",Opacity=.25});Near(.25,p.GetPixel(50,20).Alpha/255d);});
         Test("empty gradient is transparent",()=>{using var p=Paint(Linear() with{Stops=[]});Check(p.GetPixel(50,20).Alpha==0);});
-        Test("single gradient stop is constant",()=>{using var p=Paint(Linear(new(.5,"Red")));Check(p.GetPixel(1,1).Red==255&&p.GetPixel(190,90).Red==255);});
+        Test("single gradient stop is constant",()=>{using var p=Paint(Linear(new DesignGradientStop(.5,"Red")));Check(p.GetPixel(1,1).Red==255&&p.GetPixel(190,90).Red==255);});
         Test("coincident linear endpoints use last color",()=>{using var p=Paint(Linear() with{End=new(0,0)});Check(p.GetPixel(50,20).Red==255);});
         Test("singular brush mapping is transparent",()=>{using var p=Paint(Linear() with{RelativeTransform=DMatrix.Scale(0,1)});Check(p.GetPixel(50,20).Alpha==0);});
         Test("absolute gradient coordinates",()=>{using var p=Paint(Linear() with{Mapping=DesignBrushMapping.Absolute,Start=new(20,0),End=new(120,0)});Near(.505,p.GetPixel(70,20).Red/255d,.02);});

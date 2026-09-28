@@ -16,6 +16,7 @@ public sealed partial class WorkbenchView
 {
     private TemplateEditorControl? _templateEditor;
     private StrokeEditorControl? _strokeEditor;
+    private BrushEditorControl? _brushEditor;
     private StateTransitionEditorControl? _stateTransitions;
     private StoryboardInspectorControl? _storyboardInspector;
     private LayoutAuthoringControl? _layoutAuthoring;
@@ -33,10 +34,13 @@ public sealed partial class WorkbenchView
         _strokeEditor.Error+=(_,error)=>SetStatus(error,true);
         _strokeEditor.OutlineRequested+=(_,_)=>StrokeCommands.Outline(Session,Designer.Layout);
         _rightTabs.Add("Stroke",_strokeEditor);
+        _brushEditor=new(Session){CanEditBase=()=>!States.IsRecording&&!Timeline.IsRecording};
+        _brushEditor.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Brush",_brushEditor);
         _layoutAuthoring=new(Session);_layoutAuthoring.Error+=(_,error)=>SetStatus(error,true);_leftTabs.Add("Layout",_layoutAuthoring);
         var toolbar=_mainToolbar;
         if(toolbar is not null)
         {
+            toolbar.Children.Add(new StudioButton("Brush",()=>_rightTabs.Select("Brush"),"Open Brush panel"));
             toolbar.Children.Add(new StudioButton("Stroke",()=>_rightTabs.Select("Stroke"),"Open Stroke panel"));
             toolbar.Children.Add(new StudioButton("Transitions",()=>_rightTabs.Select("Transitions"),"Open Transitions panel"));
             toolbar.Children.Add(new StudioButton("Paths",()=>_rightTabs.Select("Paths"),"Open Paths panel"));
@@ -51,7 +55,7 @@ public sealed partial class WorkbenchView
     private void StopAnimationForEditing(object? sender,EventArgs args){States.StopTransitions(false);Timeline.Stop();}
     public void DisposeAdvancedTools()
     {
-        _strokeEditor?.Dispose();States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
+        _brushEditor?.Dispose();_strokeEditor?.Dispose();States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
     }
     public async Task ImportImageAsync()
     {
