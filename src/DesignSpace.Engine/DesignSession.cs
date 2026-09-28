@@ -64,12 +64,14 @@ public sealed class DesignSession
             "Line"=>n.Set("Stroke","#FF0078D4").Set("StrokeThickness","2"),
             _=>n.Set("Background","#FFF0F0F0")
         };
+        if(type=="Path")n=n.Set("Data","M 0 100 L 50 0 L 100 100 Z").Set("Stretch","Fill");
         Execute("Add "+type,d=>d with { Root=d.Root.Update(host.Id,p=>p with { Children=p.Children.Add(n) }) },[n.Id]); return n.Id;
     }
     private void Transform(string label,IReadOnlySet<Guid> ids,Func<DesignNode,DesignNode> edit)
         =>Execute(label,d=>d with { Root=DesignIndex.For(d.Root).Transform(ids,edit,respectLocks:true) });
     public void SetProperty(string key,string value,IEnumerable<Guid>? targets=null)
     {
+        if(key=="Data"&&!value.StartsWith('{'))VectorPathCodec.Parse(value);
         var ids=(targets ?? Selection).ToHashSet();
         Transform("Set "+key,ids,n=>key=="Rotation" ? n.Rotation==Numbers.Parse(value,double.NaN) ? n : n with { Rotation=Numbers.Parse(value,double.NaN) } : n.Set(key,value));
     }

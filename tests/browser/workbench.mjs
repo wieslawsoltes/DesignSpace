@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import { PNG } from 'pngjs';
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
+import { vectorPaths } from './vector-paths.mjs';
 
 const base=process.argv[2]||'http://127.0.0.1:4173/DesignSpace/';
 const directory='artifacts/verification';await mkdir(directory,{recursive:true});
@@ -125,6 +126,7 @@ try{
     await click('Save design');await page.waitForTimeout(1500);await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>globalThis.designSpaceDiagnostics?.ready&&globalThis.designSpaceDiagnostics.nodes.some(n=>n.properties.Template),null,{timeout:180000});
     const s=await snapshot();assert.ok(s.nodes.some(n=>n.type==='Image'));assert.ok(s.rendering.previewNodes>s.nodes.length);assert.equal(s.sourceDirty,false);assert.equal(s.timeline.autoReverse,true);assert.equal(s.timeline.duration,1);assert.ok(s.states.items.find(state=>state.name==='Pressed').setters.some(setter=>setter.property==='Opacity'&&setter.value==='0.35'));
   });
+  await vectorPaths({page,snapshot,click,check,directory});
   await check('no application exceptions or renderer diagnostics',async()=>{
     assert.deepEqual(errors,[]);assert.ok(!log.some(s=>s.startsWith('error: [DesignSpace')));const s=await snapshot();assert.deepEqual(s.rendering.warnings,[]);assert.deepEqual(s.rendering.previewWarnings,[]);
   });

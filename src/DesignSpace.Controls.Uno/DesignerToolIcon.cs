@@ -22,8 +22,9 @@ public sealed class DesignerToolIcon : SKCanvasElement
             case "Rectangle": c.DrawRect(4,5,14,12,p); break;
             case "Ellipse": c.DrawOval(4,4,14,14,p); break;
             case "Line": Line(4,18,18,4); break;
-            case "Path":
+            case "Path": case "Pen":
                 using(var path=new SKPath()) { path.MoveTo(4,17); path.CubicTo(7,0,15,22,18,5); c.DrawPath(path,p); } c.DrawRect(2,15,4,4,p); c.DrawRect(16,3,4,4,p); break;
+            case "Pencil": Line(5,17,15,4);Line(15,4,18,7);Line(18,7,8,19);Line(8,19,4,20);Line(4,20,5,17);break;
             case "TextBlock": Line(4,4,18,4); Line(11,4,11,19); Line(7,19,15,19); Line(4,4,4,7); Line(18,4,18,7); break;
             case "Grid": c.DrawRect(3,3,16,16,p); Line(3,8,19,8); Line(3,13,19,13); Line(8,3,8,19); Line(13,3,13,19); break;
             case "Button": c.DrawRect(3,6,16,11,p); Line(7,11,15,11); break;

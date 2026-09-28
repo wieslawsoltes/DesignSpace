@@ -10,7 +10,9 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
 {
     private readonly SKPaint _fill=new(){IsAntialias=true};
     private readonly SKPaint _stroke=new(){IsAntialias=true,Style=SKPaintStyle.Stroke,StrokeWidth=1};
-    private readonly Dictionary<string,SKPath> _paths=[];
+    private readonly SkiaVectorCache _paths=new();
+    public long PathBuildCount=>_paths.Builds;
+    public long PathCacheHits=>_paths.Hits;
     private readonly SkiaTextService _text=new();
     private readonly EmbeddedImages _images=new();
     private LayoutSnapshot? _indexed;
@@ -82,7 +84,12 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
             var outerCount=c.SaveCount;c.Save();Concat(c,entry.LocalTransform);var b=Rect(entry.Bounds);var n=entry.Node;
             var opacity=Math.Clamp(n.Number("Opacity",1),0,1);using var layer=opacity<1 ? new SKPaint{Color=SKColors.White.WithAlpha((byte)(opacity*255))} : null;
             if(layer is not null)c.SaveLayer(layer);
-            if(!c.QuickReject(b))
+            try
+            {
+                if(VectorGeometry.ReadClip(n) is { } clip)c.ClipPath(_paths.Get(clip,DMatrix.Translate(b.Left,b.Top)),SKClipOperation.Intersect,true);
+            }
+            catch(InvalidDataException ex){if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);c.RestoreToCount(outerCount);return;}
+            if(n.Type is "Path" or "Polygon" or "Polyline" || !c.QuickReject(b))
             {
                 var nodeCount=c.SaveCount;
                 try{DrawNode(c,entry);LastDrawnNodes++;}
@@ -101,28 +108,19 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
     {
         var n=entry.Node;var b=Rect(entry.Bounds);if(b.Width<=0||b.Height<=0)return;
         if(n.Get("{https://designspace.dev/designer}TemplateExpanded")=="True")return;
-        var property=n.Type is "Rectangle" or "Ellipse" or "Path" ? "Fill" : "Background";
+        var property=n.Type is "Rectangle" or "Ellipse" or "Path" or "Polygon" or "Polyline" ? "Fill" : "Background";
         var fill=Color(n.Get(property),n.Type is "Page" or "Window" or "UserControl" ? SKColors.White : SKColors.Transparent);
         using var shader=Brush(n,property,b,_resources);_fill.Color=shader is null ? fill : SKColors.White;_fill.Shader=shader;
         _stroke.Color=Color(n.Get("Stroke",n.Get("BorderBrush")),SKColors.Transparent);_stroke.StrokeWidth=(float)n.Number("StrokeThickness",n.Number("BorderThickness",1));
         var radius=(float)Numbers.Parse(n.Get("CornerRadius",n.Get("RadiusX")));
         if(n.Type=="Ellipse"){c.DrawOval(b,_fill);if(_stroke.Color.Alpha>0)c.DrawOval(b,_stroke);}
-        else if(n.Type=="Line")c.DrawLine(b.Left,b.Top,b.Right,b.Bottom,_stroke);
-        else if(n.Type=="Path")
+        else if(n.Type=="Line")c.DrawLine(b.Left+(float)n.Number("X1"),b.Top+(float)n.Number("Y1"),b.Left+(float)n.Number("X2",b.Width),b.Top+(float)n.Number("Y2",b.Height),_stroke);
+        else if(n.Type is "Path" or "Polygon" or "Polyline")
         {
-            var data=n.Get("Data","M 0 100 L 50 0 L 100 100 Z");
-            if(!_paths.TryGetValue(data,out var path))
-            {
-                if(_paths.Count>=256){foreach(var old in _paths.Values)old.Dispose();_paths.Clear();}
-                var geometry=data.StartsWith("F0",StringComparison.Ordinal)||data.StartsWith("F1",StringComparison.Ordinal) ? data[2..].TrimStart() : data;
-                path=SKPath.ParseSvgPathData(geometry);if(path is not null){path.FillType=data.StartsWith("F1",StringComparison.Ordinal) ? SKPathFillType.Winding : SKPathFillType.EvenOdd;_paths[data]=path;}
-            }
-            if(path is not null)
-            {
-                c.Save();c.Translate(b.Left,b.Top);var pb=path.Bounds;
-                if(n.Get("Stretch","Fill")!="None"&&pb.Width>0&&pb.Height>0){c.Scale(b.Width/pb.Width,b.Height/pb.Height);c.Translate(-pb.Left,-pb.Top);}
-                c.DrawPath(path,_fill);if(_stroke.Color.Alpha>0)c.DrawPath(path,_stroke);c.Restore();
-            }
+            var geometry=n.Type=="Path" ? VectorGeometry.ReadPath(n) : VectorGeometry.Local(n,new(b.Width,b.Height));
+            var mapping=n.Type=="Path" ? VectorGeometry.Mapping(n,new(b.Width,b.Height),geometry) : DMatrix.Identity;
+            var path=_paths.Get(geometry,DMatrix.Translate(b.Left,b.Top)*mapping);
+            c.DrawPath(path,_fill);if(_stroke.Color.Alpha>0)c.DrawPath(path,_stroke);
         }
         else{if(fill.Alpha>0||shader is not null)c.DrawRoundRect(b,radius,radius,_fill);if(_stroke.Color.Alpha>0)c.DrawRoundRect(b,radius,radius,_stroke);}
         _fill.Shader=null;
@@ -159,5 +157,5 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         using var surface=SKSurface.Create(new SKImageInfo((int)w,(int)h));if(surface is null)throw new InvalidOperationException("Unable to allocate export surface.");
         surface.Canvas.Clear(SKColors.Transparent);surface.Canvas.Scale(scale);DrawScene(surface.Canvas,layout);using var image=surface.Snapshot();using var data=image.Encode(SKEncodedImageFormat.Png,100);return data.ToArray();
     }
-    public void Dispose(){_fill.Dispose();_stroke.Dispose();foreach(var path in _paths.Values)path.Dispose();_paths.Clear();_text.Dispose();_images.Dispose();_children.Clear();_resources.Clear();_indexed=null;}
+    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_text.Dispose();_images.Dispose();_children.Clear();_resources.Clear();_indexed=null;}
 }

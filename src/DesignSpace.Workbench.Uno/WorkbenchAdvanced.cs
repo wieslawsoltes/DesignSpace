@@ -25,10 +25,12 @@ public sealed partial class WorkbenchView
         _templateEditor=new(Session);_templateEditor.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Templates",_templateEditor);
         _storyboardInspector=new(Session,Timeline);_storyboardInspector.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Timing",_storyboardInspector);
         Timeline.SettingsRequested+=OpenTiming;
+        _rightTabs.Add("Paths",new PathToolsControl(Designer));
         _layoutAuthoring=new(Session);_layoutAuthoring.Error+=(_,error)=>SetStatus(error,true);_leftTabs.Add("Layout",_layoutAuthoring);
         var toolbar=Children.OfType<StackPanel>().FirstOrDefault(p=>GetRow(p)==2);
         if(toolbar is not null)
         {
+            toolbar.Children.Add(new StudioButton("Paths",()=>_rightTabs.Select("Paths"),"Open Paths panel"));
             toolbar.Children.Add(new StudioButton("Import image",()=>_=GuardAsync(ImportImageAsync),"Import image"));
             toolbar.Children.Add(new StudioButton("Templates",()=>_rightTabs.Select("Templates"),"Open Templates panel"));
             toolbar.Children.Add(new StudioButton("Layout",()=>_leftTabs.Select("Layout"),"Open Layout panel"));
