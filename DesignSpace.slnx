@@ -15,5 +15,6 @@
     <Project Path="tests/DesignSpace.Compatibility.Tests/DesignSpace.Compatibility.Tests.csproj" />
     <Project Path="tests/DesignSpace.Rendering.Tests/DesignSpace.Rendering.Tests.csproj" />
     <Project Path="tests/DesignSpace.Vector.Tests/DesignSpace.Vector.Tests.csproj" />
+    <Project Path="tests/DesignSpace.Workspace.Tests/DesignSpace.Workspace.Tests.csproj" />
   </Folder>
 </Solution>

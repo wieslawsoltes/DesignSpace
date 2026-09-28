@@ -15,6 +15,7 @@ internal static class BrowserKeyboardInput
               window.addEventListener('keydown',e=>{
                 update(e); if(e.isTrusted && e.code==='Space') state.space=true;
                 const typing=/^(INPUT|TEXTAREA)$/.test(e.target?.tagName || '') || e.target?.isContentEditable;
+                if(e.key==='F6' || (e.ctrlKey && e.key==='F4')) e.preventDefault();
                 if((e.ctrlKey || e.metaKey) && (e.key.toLowerCase()==='s' || (!typing && ['n','o','d','g'].includes(e.key.toLowerCase())))) e.preventDefault();
               },true);
               window.addEventListener('keyup',e=>{update(e); if(e.isTrusted && e.code==='Space') state.space=false;},true);

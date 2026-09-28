@@ -13,7 +13,7 @@ using Uno.WinUI.Graphics2DSK;
 using Windows.Foundation;
 namespace DesignSpace.Controls.Uno;
 
-public sealed class TimelineControl : Grid,IDisposable
+public sealed partial class TimelineControl : Grid,IDisposable
 {
     private sealed class TimelineSurface(TimelineControl owner) : SKCanvasElement
     {

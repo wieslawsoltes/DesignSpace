@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml.Media;
 namespace DesignSpace.Controls.Uno;
 
 /// <summary>Reusable ControlTemplate resource source editor with inert preview integration.</summary>
-public sealed class TemplateEditorControl : Grid,IDisposable
+public sealed partial class TemplateEditorControl : Grid,IDisposable
 {
     private readonly DesignSession _session;
     private readonly ComboBox _templates=new(){MinHeight=26,FontSize=11,Padding=new Thickness(5,2,5,2),Background=StudioTheme.Field};
@@ -16,6 +16,7 @@ public sealed class TemplateEditorControl : Grid,IDisposable
     private string? _key;
     private bool _syncing;
     private string _canonical="";
+    private string _initialDraft="";
     private bool Dirty=>Normalize(_source.Text)!=_canonical;
     private static string Normalize(string text)=>text.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
     public event EventHandler<string>? Error;
@@ -56,7 +57,7 @@ public sealed class TemplateEditorControl : Grid,IDisposable
     {
         if(Dirty) { _status.Text="Save the current draft before creating another template.";return; }
         var entries=TemplateLibrary.Read(_session.Document);var key="ButtonTemplate";var i=1;while(entries.ContainsKey(key)) key="ButtonTemplate"+i++;
-        _key=key;_source.Text=TemplateLibrary.CreateDefault(key);_status.Text="New template: save, then apply to a selection.";
+        _key=key;_source.Text=TemplateLibrary.CreateDefault(key);_initialDraft=Normalize(_source.Text);_status.Text="New template: save, then apply to a selection.";
     }
     private void Save()
     {

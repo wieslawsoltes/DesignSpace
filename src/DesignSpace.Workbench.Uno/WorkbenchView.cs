@@ -14,6 +14,7 @@ public sealed partial class WorkbenchView : Grid,IDisposable
 {
     private readonly IWorkbenchPlatform _platform;
     private DockWorkspace _dock=null!;
+    private StackPanel? _mainToolbar;
     private readonly StudioTabs _leftTabs=new();
     private readonly StudioTabs _rightTabs=new();
     private readonly Grid _designSplit=new();
@@ -30,9 +31,10 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     private readonly SemaphoreSlim _saveGate=new(1,1);
     private bool _initialized,_disposed,_loading;
     private string _clipboard="";
-    private string _nativeName="MainPage.designspace";
+    private string _nativeName { get=>Workspace.Active.FileName; set=>Workspace.Rename(Workspace.ActiveDocumentId,value); }
     private string _mode="Design";
     private long _lastMetrics;
+    public DocumentWorkspace Workspace { get; }
     public DesignSession Session { get; }
     public DesignerSurface Designer { get; }
     public PropertyInspector Properties { get; }
@@ -49,7 +51,7 @@ public sealed partial class WorkbenchView : Grid,IDisposable
 
     public WorkbenchView(IWorkbenchPlatform platform,DesignDocument? document=null)
     {
-        _platform=platform; Session=new(document);
+        _platform=platform; Workspace=new(document);Session=Workspace.Session;
         Designer=new(Session) { PreviewResolver=DesignData.Resolve };
         Properties=new(Session); Timeline=new(Session); Outline=new(Session); States=new(Session); Resources=new(Session); Data=new(Session);
         BuildWorkspace();
@@ -73,13 +75,13 @@ public sealed partial class WorkbenchView : Grid,IDisposable
             Timeline.Stop(); Session.Execute("Apply XAML",d=>change.Document with { Title=d.Title }); Source.Synchronize(Session.Document,Session.Revision,true); SetStatus("XAML applied to the design");
         };
         Source.ReloadRequested+=async (_,_)=> { if(!Source.IsDirty || await ConfirmAsync("Discard XAML draft?","Reloading replaces the unapplied source text with the current design.")) Source.Synchronize(Session.Document,Session.Revision,true); };
-        Source.DraftChanged+=(_,_)=> { if(_initialized && !_loading) { _saveTimer.Stop(); _saveTimer.Start(); } };
+        Source.DraftChanged+=(_,_)=> { UpdateDocumentChrome();if(_initialized && !_loading) { _saveTimer.Stop(); _saveTimer.Start(); } };
         _saveTimer.Tick+=async (_,_)=> { _saveTimer.Stop(); await SaveRecoveryAsync(); };
         _dock.LayoutChanged+=(_,_)=> { if(_initialized) { _saveTimer.Stop(); _saveTimer.Start(); } };
         KeyDown+=OnKeyDown;
         SetMode("Design"); SetTool("Selection"); Source.Synchronize(Session.Document,Session.Revision,true);
         var initial=Session.Document.Root.DescendantsAndSelf().FirstOrDefault(n=>n.Name=="ExploreButton"); if(initial is not null) Session.Select(initial.Id);
-        UpdateTitle();
+        InitializeDocumentWorkspace();UpdateTitle();
     }
     public void SetTool(string name)
     {
@@ -87,12 +89,11 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     }
     public void SetMode(string mode)
     {
-        _mode=mode; Designer.Visibility=mode=="XAML" ? Visibility.Collapsed : Visibility.Visible; Source.Visibility=mode=="Design" ? Visibility.Collapsed : Visibility.Visible;
-        _designSplit.ColumnDefinitions[0].Width=mode=="XAML" ? new GridLength(0) : new GridLength(1,GridUnitType.Star);
-        _designSplit.ColumnDefinitions[1].Width=new GridLength(mode=="Split" ? 4 : 0);
-        _designSplit.ColumnDefinitions[2].Width=mode=="Design" ? new GridLength(0) : new GridLength(1,GridUnitType.Star);
-        foreach(var item in _modes) item.Value.IsSelected=item.Key==mode;
-        Source.Synchronize(Session.Document,Session.Revision); if(mode=="XAML") Source.FocusSource(); Changed?.Invoke(this,EventArgs.Empty);
+        if(mode is not ("Design" or "Split" or "XAML"))throw new ArgumentException("Unknown authoring view.",nameof(mode));
+        _mode=mode;ApplySourceLayout();
+        foreach(var item in _modes)item.Value.IsSelected=item.Key==mode;
+        Source.Synchronize(Session.Document,Session.Revision);if(mode=="XAML")Source.FocusSource();
+        Changed?.Invoke(this,EventArgs.Empty);QueueWorkspaceRecovery();
     }
     public void AddAsset(string type)
     {
@@ -120,6 +121,7 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     }
     private void DocumentChanged(object? sender,EventArgs e)
     {
+        if(_switchingDocuments)return;
         UpdateTitle(); Source.Synchronize(Session.Document,Session.Revision); Designer.InvalidateLayout();
         if(States.TargetState is not null) Designer.SetPreview(null,0,States.TargetState);
         var context=StateEditingContext;
@@ -133,14 +135,14 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     {
         if(Session.Selection.Count>0) SetStatus(string.Join(", ",Session.Selection.Select(id=>Session.Document.Root.Find(id)?.Name))); Changed?.Invoke(this,EventArgs.Empty);
     }
-    private void UpdateTitle() { _title.Text=Session.Document.Title+(Session.IsDirty ? " *" : "")+" — DesignSpace"; _documentTitle.Text=Session.Document.Title+(Session.IsDirty ? " *" : ""); }
+    private void UpdateTitle() { _title.Text=TabTitle(Workspace.Active)+(Session.IsDirty || Source.IsDirty ? " *" : "")+" — DesignSpace"; _documentTitle.Text=Session.Document.Title;UpdateDocumentChrome(); }
     private void UpdateZoom()=>_zoom.Text=$"{Designer.Viewport.Zoom*100:0}%";
     public void SetStatus(string message,bool error=false) { _status.Text=message; _status.Foreground=StudioTheme.Brush(error ? "#FFE1B5" : "#FFFFFF"); Changed?.Invoke(this,EventArgs.Empty); }
     public void Guard(Action action) { try { action(); } catch(Exception e) { SetStatus(e.Message,true); } }
     public async Task GuardAsync(Func<Task> action) { try { await action(); } catch(Exception e) { SetStatus(e.Message,true); } }
     public void Dispose()
     {
-        if(_disposed) return; _disposed=true; _saveTimer.Stop(); Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged;
+        if(_disposed) return; _disposed=true; Workspace.Changed-=WorkspaceChanged;Workspace.Dispose();_saveTimer.Stop(); Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged;
         Timeline.TimeChanged-=OnTimelinePreview;States.StatePreviewRequested-=OnStateSelection;States.PreviewFrameChanged-=OnStateFrame;
         Designer.Dispose(); Properties.Dispose(); Timeline.Dispose(); Outline.Dispose(); States.Dispose(); Resources.Dispose(); Data.Dispose();
     }

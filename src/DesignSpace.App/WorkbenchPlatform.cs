@@ -10,9 +10,9 @@ internal sealed class WorkbenchPlatform : IWorkbenchPlatform
     public async Task<OpenDesignFile?> OpenAsync()
     {
         var picker=new FileOpenPicker { SuggestedStartLocation=PickerLocationId.DocumentsLibrary };
-        foreach(var extension in new[]{".xaml",".designspace",".json"}) picker.FileTypeFilter.Add(extension);
+        foreach(var extension in new[]{".xaml",".designspace",".designspace-workspace",".json"}) picker.FileTypeFilter.Add(extension);
         var file=await picker.PickSingleFileAsync(); if(file is null) return null;
-        var properties=await file.GetBasicPropertiesAsync(); if(properties.Size>8*1024*1024) throw new IOException("Import is limited to 8 MiB per file.");
+        var properties=await file.GetBasicPropertiesAsync(); var limit=file.Name.EndsWith(".designspace-workspace",StringComparison.OrdinalIgnoreCase)?16*1024*1024:8*1024*1024; if(properties.Size>(ulong)limit) throw new IOException("Import exceeds the file size limit.");
         return new(file.Name,await FileIO.ReadTextAsync(file));
     }
     public async Task<bool> SaveAsync(string name,byte[] content,string mimeType)

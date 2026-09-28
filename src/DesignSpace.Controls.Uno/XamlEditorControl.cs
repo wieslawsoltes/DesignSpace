@@ -8,7 +8,7 @@ using Microsoft.UI.Xaml.Media;
 namespace DesignSpace.Controls.Uno;
 
 /// <summary>Accessible source editing with isolated drafts and optimistic revision checks.</summary>
-public sealed class XamlEditorControl : Grid
+public sealed partial class XamlEditorControl : Grid
 {
     private readonly TextBox _editor;
     private readonly TextBlock _status=StudioTheme.Text("XAML",11,"#9E9EA6");

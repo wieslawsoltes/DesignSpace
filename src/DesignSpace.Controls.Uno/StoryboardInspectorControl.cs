@@ -7,12 +7,13 @@ using Microsoft.UI.Xaml.Controls;
 namespace DesignSpace.Controls.Uno;
 
 /// <summary>Transactional storyboard timing inspector, independently composable with a timeline.</summary>
-public sealed class StoryboardInspectorControl : ScrollViewer,IDisposable
+public sealed partial class StoryboardInspectorControl : ScrollViewer,IDisposable
 {
     private readonly DesignSession _session;
     private readonly TimelineControl _timeline;
     private readonly StackPanel _body=new(){Spacing=9,Padding=new Thickness(8)};
     private DesignStoryboard? _displayed;
+    private StoryboardSettingsControl? _workspaceEditor;
     public event EventHandler<string>? Error;
     public StoryboardInspectorControl(DesignSession session,TimelineControl timeline)
     {
@@ -27,7 +28,7 @@ public sealed class StoryboardInspectorControl : ScrollViewer,IDisposable
         _displayed=board;_body.Children.Clear();
         if(board is null) { _body.Children.Add(StudioTheme.Text("Create a storyboard in the timeline first."));return; }
         _body.Children.Add(StudioTheme.Text("Timing · "+board.Name,13));
-        var editor=new StoryboardSettingsControl(board);_body.Children.Add(editor);
+        var editor=_workspaceEditor=new StoryboardSettingsControl(board);_body.Children.Add(editor);
         _body.Children.Add(new StudioButton("Apply timing",()=>
         {
             try

@@ -34,7 +34,7 @@ public sealed partial class WorkbenchView
         _strokeEditor.OutlineRequested+=(_,_)=>StrokeCommands.Outline(Session,Designer.Layout);
         _rightTabs.Add("Stroke",_strokeEditor);
         _layoutAuthoring=new(Session);_layoutAuthoring.Error+=(_,error)=>SetStatus(error,true);_leftTabs.Add("Layout",_layoutAuthoring);
-        var toolbar=Children.OfType<StackPanel>().FirstOrDefault(p=>GetRow(p)==2);
+        var toolbar=_mainToolbar;
         if(toolbar is not null)
         {
             toolbar.Children.Add(new StudioButton("Stroke",()=>_rightTabs.Select("Stroke"),"Open Stroke panel"));

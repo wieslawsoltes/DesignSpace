@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace DesignSpace.Controls.Uno;
 
 /// <summary>Reusable timing editor. Reading the result does not mutate the supplied storyboard.</summary>
-public sealed class StoryboardSettingsControl : StackPanel
+public sealed partial class StoryboardSettingsControl : StackPanel
 {
     private readonly DesignStoryboard _original;
     private readonly TextBox _duration,_begin,_speed,_repeat;

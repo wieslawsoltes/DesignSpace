@@ -7,7 +7,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace DesignSpace.Controls.Uno;
 
 /// <summary>Embeddable group and generated-transition authoring with revision-checked drafts.</summary>
-public sealed class StateTransitionEditorControl : ScrollViewer,IDisposable
+public sealed partial class StateTransitionEditorControl : ScrollViewer,IDisposable
 {
     private readonly DesignSession _session;
     private readonly StatesControl _states;
