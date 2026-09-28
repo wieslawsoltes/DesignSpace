@@ -12,7 +12,7 @@ public sealed partial class DesignRenderer
     public long BrushCacheBytes=>_brushShaders.EstimatedBytes;
     private SKShader? Brush(DesignNode n,string property,SKRect bounds)
     {
-        var source=_brushResolver?.Resolve(n.Id,property) ?? BrushResolver.LocalSource(n,property);
+        var source=_brushResolver is null ? BrushResolver.LocalSource(n,property) : _brushResolver.Resolve(n.Id,property);
         if(string.IsNullOrWhiteSpace(source)||source.Trim()=="{x:Null}")return null;
         return _brushShaders.Get(source,new(bounds.Left,bounds.Top,bounds.Width,bounds.Height));
     }

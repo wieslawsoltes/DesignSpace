@@ -18,7 +18,7 @@ public sealed class BrushResolver
         var count=0;
         void Walk(DesignNode node,Scope? parent,int depth)
         {
-            if(++count>DocumentValidator.MaxNodes||depth>DocumentValidator.MaxDepth)throw new InvalidDataException("Brush scope budget exceeded.");
+            if(++count>DocumentValidator.MaxNodes*2||depth>DocumentValidator.MaxDepth)throw new InvalidDataException("Brush scope budget exceeded.");
             var resources=Infos.GetValue(node,ReadNode).Resources;var scope=resources.Count==0&&parent is not null?parent:new Scope(parent,resources);
             _nodes.Add(node.Id,(node,scope));foreach(var child in node.Children)Walk(child,scope,depth+1);
         }
@@ -41,8 +41,10 @@ public sealed class BrushResolver
             }
             else if(new[]{"Fill","Stroke","Background","Foreground","BorderBrush","OpacityMask"}.Contains(property))
             {
-                var children=e.Elements().ToArray();if(children.Length>1)throw new InvalidDataException("A brush property accepts one value.");
-                assignments[property]=children.Length==0||children[0].Name==XName.Get("Null",DesignNode.XamlNamespace)?null:children[0].ToString(SaveOptions.DisableFormatting);
+                var children=e.Elements().ToArray();
+                // Preserve invalid/unsupported property payloads for a per-node diagnostic.
+                // Scope construction must not turn one bad brush into a whole-scene failure.
+                assignments[property]=children.Length>1?raw:children.Length==0||children[0].Name==XName.Get("Null",DesignNode.XamlNamespace)?null:children[0].ToString(SaveOptions.DisableFormatting);
             }
         }
         return new(assignments,resources);
@@ -60,6 +62,7 @@ public sealed class BrushResolver
         }
         else if(source.TrimStart().StartsWith('<'))brush=BrushCodec.ReadXml(source);
         else if(source.StartsWith('{'))throw new InvalidDataException("Unresolved brush expression: "+source);
+        if(brush?.Name==XName.Get("Null",DesignNode.XamlNamespace))return _resolved[key]=null;
         if(brush is not null)
         {
             foreach(var element in brush.DescendantsAndSelf())foreach(var attribute in element.Attributes().Where(a=>!a.IsNamespaceDeclaration).ToArray())
