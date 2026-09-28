@@ -28,9 +28,13 @@ jobs:
           name: portable-packages
           path: artifacts/packages
           if-no-files-found: error
-  controls:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -41,4 +45,5 @@ jobs:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', '**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
-      - run: dotnet build src/DesignSpace.Controls.Uno -c Release -f net10.0-desktop -p:DesignSpaceTargetFrameworks=net10.0-desktop
+      - name: Build desktop application
+        run: dotnet build src/DesignSpace.App -c Release -f net10.0-desktop -p:DesignSpaceTargetFrameworks=net10.0-desktop

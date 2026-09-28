@@ -1,0 +1,101 @@
+name: Browser and GitHub Pages
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', '**/*.csproj') }}
+          restore-keys: ${{ runner.os }}-nuget-
+      - run: dotnet workload install wasm-tools --skip-manifest-update
+      - name: Publish real Uno WebAssembly application
+        run: dotnet publish src/DesignSpace.App -f net10.0-browserwasm -c Release -p:DesignSpaceTargetFrameworks=net10.0-browserwasm -p:WasmShellWebAppBasePath=/DesignSpace/ -o artifacts/browser
+      - name: Stage static site
+        run: python3 tools/prepare-pages.py artifacts/browser artifacts/site
+      - name: Install browser verification dependencies
+        run: |
+          npm install --no-save playwright@1.55.1 pngjs@7.0.0
+          npx playwright install --with-deps chromium
+      - name: Verify browser rendering and editing
+        run: |
+          mkdir -p artifacts/serve
+          ln -s "$PWD/artifacts/site" artifacts/serve/DesignSpace
+          python3 -m http.server 4173 --directory artifacts/serve > artifacts/server.log 2>&1 &
+          node tests/browser/workbench.mjs http://127.0.0.1:4173/DesignSpace/
+      - name: Pack reusable Uno libraries
+        run: |
+          for name in Docking.Uno Controls.Uno Workbench.Uno; do
+            dotnet pack src/DesignSpace.$name -c Release -p:DesignSpaceTargetFrameworks=net10.0-browserwasm -o artifacts/packages
+          done
+      - name: Archive source
+        run: git archive --format=zip --output=artifacts/DesignSpace-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-verification
+          path: |
+            artifacts/verification
+            artifacts/server.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-and-uno-packages
+          path: |
+            artifacts/site
+            artifacts/packages
+            artifacts/DesignSpace-source.zip
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main'
+        with:
+          path: artifacts/site
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: browser
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/deploy-pages@v4
+        id: deployment
+      - name: Verify deployed commit identity
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+          url=os.environ['PAGE_URL'].rstrip('/')+'/build-info.json?commit='+os.environ['GITHUB_SHA']
+          for attempt in range(12):
+              try:
+                  with urllib.request.urlopen(url,timeout=20) as response:
+                      info=json.load(response)
+                  if info.get('commit')==os.environ['GITHUB_SHA']:
+                      print('Verified deployed DesignSpace commit:',info['commit'])
+                      break
+              except Exception as error:
+                  print(type(error).__name__,str(error))
+              time.sleep(5)
+          else:
+              raise SystemExit('Public deployment did not report the expected commit')
+          PY
