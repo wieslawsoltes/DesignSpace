@@ -25,6 +25,8 @@ jobs:
           dotnet-version: '10.0.x'
       - run: dotnet run --project tests/DesignSpace.Tests -c Release
       - run: dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
+      - name: Verify layout, shaping, images and templates
+        run: dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
       - name: Verify trimmed persistence without reflection
         run: |
           dotnet publish tests/DesignSpace.Compatibility.Tests -c Release -r linux-x64 --self-contained true -p:PublishTrimmed=true -o artifacts/trimmed-tests
@@ -34,6 +36,11 @@ jobs:
           for name in Core Engine Animation Xaml Rendering.Skia; do
             dotnet pack src/DesignSpace.$name -c Release -o artifacts/packages
           done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portable-verification
+          path: artifacts/verification
       - uses: actions/upload-artifact@v4
         with:
           name: portable-packages

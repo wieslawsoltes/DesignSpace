@@ -15,6 +15,15 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Archive exact build source
+        run: |
+          mkdir -p artifacts
+          git archive --format=zip --output=artifacts/DesignSpace-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-source
+          path: artifacts/DesignSpace-source.zip
+          retention-days: 14
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
@@ -28,6 +37,11 @@ jobs:
         run: dotnet publish src/DesignSpace.App -f net10.0-browserwasm -c Release -p:DesignSpaceTargetFrameworks=net10.0-browserwasm -p:WasmShellWebAppBasePath=/DesignSpace/ -o artifacts/browser
       - name: Stage static site
         run: python3 tools/prepare-pages.py artifacts/browser artifacts/site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-build
+          path: artifacts/site
+          retention-days: 14
       - name: Install browser verification dependencies
         run: |
           npm install --no-save playwright@1.55.1 pngjs@7.0.0
@@ -43,8 +57,6 @@ jobs:
           for name in Docking.Uno Controls.Uno Workbench.Uno; do
             dotnet pack src/DesignSpace.$name -c Release -p:DesignSpaceTargetFrameworks=net10.0-browserwasm -o artifacts/packages
           done
-      - name: Archive source
-        run: git archive --format=zip --output=artifacts/DesignSpace-source.zip HEAD
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -54,11 +66,8 @@ jobs:
             artifacts/server.log
       - uses: actions/upload-artifact@v4
         with:
-          name: browser-and-uno-packages
-          path: |
-            artifacts/site
-            artifacts/packages
-            artifacts/DesignSpace-source.zip
+          name: browser-uno-packages
+          path: artifacts/packages
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'
         with:
