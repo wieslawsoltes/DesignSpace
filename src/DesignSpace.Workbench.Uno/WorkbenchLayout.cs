@@ -47,7 +47,7 @@ public sealed partial class WorkbenchView
     private UIElement BuildTools()
     {
         var tools=new StackPanel { Spacing=2,Padding=new Thickness(2,5,2,5),Background=StudioTheme.Panel };
-        foreach(var (name,key) in new[]{("Selection","V"),("Direct Selection","A"),("Hand","H"),("Zoom","Z"),("Rectangle","R"),("Ellipse","E"),("Line","L"),("Path","P"),("TextBlock","T"),("Grid","G"),("Button","B")})
+        foreach(var (name,key) in new[]{("Selection","V"),("Direct Selection","A"),("Hand","H"),("Zoom","Z"),("Rectangle","R"),("Ellipse","E"),("Line","L"),("Pen","P"),("Pencil","Y"),("TextBlock","T"),("Grid","G"),("Button","B")})
         {
             var button=new StudioButton("",()=>SetTool(name),"Tool "+name+" ("+key+")") { Content=new DesignerToolIcon { Kind=name,Width=22,Height=22 },Width=31,Height=29,HorizontalContentAlignment=HorizontalAlignment.Center,Padding=new Thickness(0) }; _tools[name]=button; tools.Children.Add(button);
         }

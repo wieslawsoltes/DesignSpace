@@ -67,6 +67,9 @@ public sealed class LayoutEngine(ITextMetrics? metrics=null)
                     cursor+=horizontal ? childSize.Width : childSize.Height; cross=Math.Max(cross,horizontal ? childSize.Height : childSize.Width); count++;
                 }
                 cursor+=Math.Max(0,count-1)*node.Number("Spacing"); desired=horizontal ? new(cursor,cross) : new(cross,cursor); break;
+            case "Path":
+                try { var bounds=VectorMath.Bounds(VectorGeometry.ReadPath(node));var stroke=node.Number("StrokeThickness",1);desired=new(Math.Max(0,bounds.Right)+stroke,Math.Max(0,bounds.Bottom)+stroke); }
+                catch(InvalidDataException){desired=default;}break;
             case "Canvas": desired=default; break;
             case "Grid":
                 var plan=Plan(node,inner,false); desired=new(plan.Columns.Sum()+Math.Max(0,plan.Columns.Length-1)*plan.ColumnSpacing,plan.Rows.Sum()+Math.Max(0,plan.Rows.Length-1)*plan.RowSpacing); break;

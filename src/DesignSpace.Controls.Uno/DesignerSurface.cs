@@ -24,13 +24,15 @@ public static class DesignerKeys
     public static bool Shift=>Down(VirtualKey.Shift);
     public static bool Alt=>Down(VirtualKey.Menu);
 }
-public sealed class DesignerSurface : Grid,IDisposable
+public sealed partial class DesignerSurface : Grid,IDisposable
 {
+    private static readonly IReadOnlySet<Guid> NoSelection=new HashSet<Guid>();
     private sealed class Surface(DesignerSurface owner) : SKCanvasElement
     {
         protected override void RenderOverride(SKCanvas canvas,Size area)
         {
-            owner.Renderer.Draw(canvas,area.Width,area.Height,owner.Layout,owner.Viewport,owner.Session.Selection,owner._marquee,owner.IsPreview);
+            owner.Renderer.Draw(canvas,area.Width,area.Height,owner.Layout,owner.Viewport,(owner.Tool is "Direct Selection" or "Pen" or "Path" && owner.Session.Selection.Count==1 && owner.Session.Index.Find(owner.Session.Selection.Single())?.Type=="Path") ? NoSelection : owner.Session.Selection,owner._marquee,owner.IsPreview);
+            owner.DrawPathOverlay(canvas);
             owner.Rendered?.Invoke(owner,EventArgs.Empty);
         }
     }
@@ -54,7 +56,8 @@ public sealed class DesignerSurface : Grid,IDisposable
     public LayoutSnapshot Layout=>_layout ??= _layoutEngine.Arrange(PreviewResolver?.Invoke(_previewRoot ?? Session.Document.Root) ?? _previewRoot ?? Session.Document.Root);
     public long MeasureCacheHits=>_layoutEngine.MeasureCacheHits;
     public Func<DesignNode,DesignNode>? PreviewResolver { get; set; }=DesignPreview.Resolve;
-    public string Tool { get; set; }="Selection";
+    private string _tool="Selection";
+    public string Tool { get=>_tool;set{if(_tool==value)return;CancelGesture();_tool=value;NotifyPaths();} }
     public bool IsPreview { get; set; }
     public double Playhead { get; private set; }
     public DesignStoryboard? Storyboard { get; private set; }
@@ -80,8 +83,8 @@ public sealed class DesignerSurface : Grid,IDisposable
         Session.DocumentChanged+=DocumentChanged; Session.SelectionChanged+=SelectionChanged;
         SizeChanged+=(_,_)=> { if(_fitPending && ActualWidth>100 && ActualHeight>100) { Fit(); _fitPending=false; } else Invalidate(); };
     }
-    private void DocumentChanged(object? sender,EventArgs e) { _previewRoot=null; Storyboard=null; State=null; _layout=null; Invalidate(); }
-    private void SelectionChanged(object? sender,EventArgs e)=>Invalidate();
+    private void DocumentChanged(object? sender,EventArgs e) { PathDocumentChanged(); _previewRoot=null; Storyboard=null; State=null; _layout=null; Invalidate(); }
+    private void SelectionChanged(object? sender,EventArgs e){PathSelectionChanged();Invalidate();}
     public void FocusDesigner()=>_focus.Focus(FocusState.Programmatic);
     public void Invalidate()=>_surface.Invalidate();
     public void InvalidateLayout() { _layout=null; Invalidate(); }
@@ -89,11 +92,11 @@ public sealed class DesignerSurface : Grid,IDisposable
     public void Zoom(double factor) { Viewport.ZoomAt(new(ActualWidth/2,ActualHeight/2),Viewport.Zoom*factor); Invalidate(); ViewChanged?.Invoke(this,EventArgs.Empty); }
     public void SetPreview(DesignStoryboard? board,double time,DesignState? state=null)
     {
-        if(_gesture is "move" or "resize" or "draw") return;
+        if(_gesture is "move" or "resize" or "draw" or "path-edit" or "pen-add" or "pencil" || _penParent is not null) return;
         Storyboard=board; Playhead=time; State=state; _previewRoot=AnimationEngine.Evaluate(Session.Document.Root,board,time,state); _layout=null; Invalidate();
     }
     public void ClearPreview() { Storyboard=null; State=null; _previewRoot=null; _layout=null; Playhead=0; Invalidate(); }
-    public void CancelGesture() { _gesture=""; _marquee=null; _previewRoot=null; _layout=null; _changes=null; _original.Clear(); Invalidate(); }
+    public void CancelGesture() { CancelPathDraft();_gesture=""; _marquee=null; _previewRoot=null; _layout=null; _changes=null; _original.Clear(); Invalidate(); }
     private static DPoint[] Handles(DRect b)=>[new(b.X,b.Y),new(b.Center.X,b.Y),new(b.Right,b.Y),new(b.X,b.Center.Y),new(b.Right,b.Center.Y),new(b.X,b.Bottom),new(b.Center.X,b.Bottom),new(b.Right,b.Bottom)];
     private void Pressed(object sender,PointerRoutedEventArgs e)
     {
@@ -105,6 +108,7 @@ public sealed class DesignerSurface : Grid,IDisposable
         else
         {
             EditingStarted?.Invoke(this,EventArgs.Empty); ClearPreview();
+            if(PathPressed(e,_start)){e.Handled=true;return;}
             if(Tool is not ("Selection" or "Direct Selection"))
             {
                 var parent=Session.Selection.Select(Session.Index.Find).FirstOrDefault(n=>n?.Type=="Canvas") ?? Session.Document.Root;
@@ -150,8 +154,9 @@ public sealed class DesignerSurface : Grid,IDisposable
     }
     private void Moved(object sender,PointerRoutedEventArgs e)
     {
-        if(_gesture.Length==0) return;
         var position=e.GetCurrentPoint(_surface).Position; var screen=new DPoint(position.X,position.Y); var world=Viewport.ScreenToWorld(screen);
+        if(_gesture!="pan"&&PathMoved(world)){e.Handled=true;return;}
+        if(_gesture.Length==0)return;
         if(_gesture=="pan") { Viewport.PanX=_panStart.X+screen.X-_screenStart.X; Viewport.PanY=_panStart.Y+screen.Y-_screenStart.Y; Invalidate(); return; }
         if(_gesture is "draw" or "marquee") { _marquee=DRect.FromPoints(_start,world); Invalidate(); return; }
         var changes=new Dictionary<Guid,IReadOnlyDictionary<string,string>>();
@@ -182,16 +187,25 @@ public sealed class DesignerSurface : Grid,IDisposable
             }
             if(b==original.Box) continue;
             var values=new Dictionary<string,string> { ["Canvas.Left"]=Numbers.Format(b.X),["Canvas.Top"]=Numbers.Format(b.Y) };
-            if(_gesture=="resize") { values["Width"]=Numbers.Format(b.Width); values["Height"]=Numbers.Format(b.Height); }
+            if(_gesture=="resize")
+            {
+                values["Width"]=Numbers.Format(b.Width); values["Height"]=Numbers.Format(b.Height);
+                if(Session.Index.Find(id) is { Type:"Path" } pathNode)
+                {
+                    var geometry=VectorGeometry.Local(pathNode,new(original.Box.Width,original.Box.Height));
+                    values["Data"]=VectorPathCodec.Write(VectorMath.Transform(geometry,DMatrix.Scale(b.Width/Math.Max(1,original.Box.Width),b.Height/Math.Max(1,original.Box.Height))));values["Stretch"]="None";
+                }
+            }
             changes[id]=values;
         }
-        _changes=changes; _previewRoot=DesignTree.SetProperties(Session.Document.Root,changes); _layout=null; Invalidate(); e.Handled=true;
+        _changes=changes; _previewRoot=DesignTree.SetProperties(Session.Document.Root,changes,replacePropertyElements:true); _layout=null; Invalidate(); e.Handled=true;
     }
     private void Released(object sender,PointerRoutedEventArgs e)
     {
         var gesture=_gesture; _gesture="";
         try
         {
+            if(PathReleased(gesture))return;
             if(gesture=="draw" && _marquee is { } box)
             {
                 if(!Layout.ById.TryGetValue(_drawParent,out var parent) || !parent.WorldTransform.TryInvert(out var inverse)) throw new InvalidOperationException("The drawing container is unavailable.");
@@ -203,11 +217,11 @@ public sealed class DesignerSurface : Grid,IDisposable
             else if(gesture=="marquee" && _marquee is { } box2)
                 Session.Select(Layout.Entries.Where(x=>x.Depth>0 && !x.IsEffectivelyLocked && x.IsEffectivelyVisible && Session.Index.Find(x.Node.Id) is not null && box2.Intersects(x.VisualBounds)).Select(x=>x.Node.Id),DesignerKeys.Control);
             else if(gesture is "move" or "resize" && _changes is { Count:>0 } changes)
-                Session.Execute(gesture=="move" ? "Move selection" : "Resize selection",d=>d with { Root=DesignTree.SetProperties(d.Root,changes) });
+                Session.Execute(gesture=="move" ? "Move selection" : "Resize selection",d=>d with { Root=DesignTree.SetProperties(d.Root,changes,replacePropertyElements:true) });
         }
         catch(Exception ex) { Error?.Invoke(this,ex.Message); }
         finally { _marquee=null; _previewRoot=null; _layout=null; _changes=null; _original.Clear(); _surface.ReleasePointerCapture(e.Pointer); Invalidate(); ViewChanged?.Invoke(this,EventArgs.Empty); }
         e.Handled=true;
     }
-    public void Dispose() { Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged; Renderer.Dispose(); }
+    public void Dispose() { Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged; _adorners.Dispose();Renderer.Dispose(); }
 }

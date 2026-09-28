@@ -13,5 +13,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/DesignSpace.Tests/DesignSpace.Tests.csproj" />
     <Project Path="tests/DesignSpace.Compatibility.Tests/DesignSpace.Compatibility.Tests.csproj" />
+    <Project Path="tests/DesignSpace.Rendering.Tests/DesignSpace.Rendering.Tests.csproj" />
+    <Project Path="tests/DesignSpace.Vector.Tests/DesignSpace.Vector.Tests.csproj" />
   </Folder>
 </Solution>

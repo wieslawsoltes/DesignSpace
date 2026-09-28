@@ -32,9 +32,18 @@ public sealed class LayoutSnapshot
     }
     public bool IsClipped(LayoutEntry e,DPoint point)
     {
+        static bool OutsideClip(LayoutEntry entry,DPoint point)
+        {
+            try
+            {
+                var clip=VectorGeometry.ReadClip(entry.Node);return clip is not null&&(!entry.WorldTransform.TryInvert(out var inverse)||!VectorMath.Contains(clip,inverse.Map(point)-new DPoint(entry.Bounds.X,entry.Bounds.Y)));
+            }
+            catch(InvalidDataException){return true;}
+        }
+        if(OutsideClip(e,point))return true;
         while(e.ParentId is { } parent && ById.TryGetValue(parent,out var ancestor))
         {
-            e=ancestor;
+            e=ancestor;if(OutsideClip(e,point))return true;
             if(e.Depth==0 || e.Node.Get("ClipToBounds")=="True" || e.Node.Type is "Page" or "UserControl" or "Window")
                 if(!e.WorldTransform.TryInvert(out var inverse) || !e.Bounds.Contains(inverse.Map(point))) return true;
         }
@@ -43,11 +52,24 @@ public sealed class LayoutSnapshot
     private static bool Contains(LayoutEntry e,DPoint p)
     {
         var b=e.Bounds;
+        if(e.Node.Type is "Path" or "Polygon" or "Polyline")
+        {
+            try
+            {
+                var node=e.Node;var geometry=node.Type=="Path" ? VectorGeometry.ReadPath(node) : VectorGeometry.Local(node,new(b.Width,b.Height));
+                var mapping=node.Type=="Path" ? VectorGeometry.Mapping(node,new(b.Width,b.Height),geometry) : DMatrix.Identity;
+                var local=p-new DPoint(b.X,b.Y);
+                var hasFill=node.Get("Fill").Length>0||node.PropertyElements.Any(raw=>raw.Contains(".Fill",StringComparison.Ordinal));
+                if(hasFill&&mapping.TryInvert(out var inv)&&VectorMath.Contains(geometry,inv.Map(local)))return true;
+                return node.Get("Stroke").Length>0&&VectorMath.Nearest(geometry,local,mapping,Math.Max(3,node.Number("StrokeThickness",1)/2)) is not null;
+            }
+            catch(InvalidDataException){return false;}
+        }
         if(e.Node.Type=="Line")
         {
-            var dx=b.Width; var dy=b.Height; var length=dx*dx+dy*dy;
-            var t=length>0 ? Math.Clamp(((p.X-b.X)*dx+(p.Y-b.Y)*dy)/length,0,1) : 0;
-            return Math.Pow(p.X-b.X-t*dx,2)+Math.Pow(p.Y-b.Y-t*dy,2)<=Math.Pow(Math.Max(3,e.Node.Number("StrokeThickness",1)/2),2);
+            var x=b.X+e.Node.Number("X1");var y=b.Y+e.Node.Number("Y1");var dx=e.Node.Number("X2",b.Width)-e.Node.Number("X1");var dy=e.Node.Number("Y2",b.Height)-e.Node.Number("Y1"); var length=dx*dx+dy*dy;
+            var t=length>0 ? Math.Clamp(((p.X-x)*dx+(p.Y-y)*dy)/length,0,1) : 0;
+            return Math.Pow(p.X-x-t*dx,2)+Math.Pow(p.Y-y-t*dy,2)<=Math.Pow(Math.Max(3,e.Node.Number("StrokeThickness",1)/2),2);
         }
         if(!b.Contains(p)) return false;
         return e.Node.Type!="Ellipse" || b.Width>0 && b.Height>0 && Math.Pow((p.X-b.Center.X)/(b.Width/2),2)+Math.Pow((p.Y-b.Center.Y)/(b.Height/2),2)<=1;
