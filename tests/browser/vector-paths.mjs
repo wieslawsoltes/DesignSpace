@@ -96,4 +96,6 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
   await anchorSelection({page,snapshot,click,check,directory});
   const {stateTransitions}=await import('./state-transitions.mjs');
   await stateTransitions({page,snapshot,click,check,directory});
+  const {strokes}=await import('./strokes.mjs');
+  await strokes({page,snapshot,click,check,directory});
 }

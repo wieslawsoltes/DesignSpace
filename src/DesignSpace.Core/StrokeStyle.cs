@@ -93,7 +93,9 @@ public sealed record StrokeStyle(double Thickness=1,DesignLineCap StartCap=Desig
             for(var i=0;i<values.Length;i++)
             {
                 var end=cursor+values[i]*Thickness;
-                if(i%2==0&&end>=0&&cursor<=length)
+                // A clipped nonzero dash touching an endpoint is not a dot.
+                // Only genuinely zero-length dash entries receive dot caps.
+                if(i%2==0&&(values[i]==0 ? cursor>=0&&cursor<=length : end>0&&cursor<length))
                 {
                     var span=new StrokeDashSpan(Math.Max(0,cursor),Math.Min(length,end));
                     if(result.Count>0&&result[^1].End==span.Start)result[^1]=result[^1] with { End=span.End };
