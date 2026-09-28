@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 // Read-only diagnostics locate the real handles. Every edit uses pointer/keyboard input.
 export async function anchorSelection({page,snapshot,click,check,directory}) {
   const wait=async()=>page.waitForTimeout(300);
+  async function committed(revision){
+    // Diagnostics are sampled asynchronously; wait for the model transition, then
+    // keep the exactly-once assertion after another sample, rather than timing it.
+    await page.waitForFunction(expected=>globalThis.designSpaceDiagnostics.revision===expected,revision+1,{timeout:15000});
+    await wait();const state=await snapshot();assert.equal(state.revision,revision+1);return state;
+  }
   async function world(x,y){const v=(await snapshot()).surface;return{x:v.x+v.panX+x*v.zoom,y:v.y+v.panY+y*v.zoom};}
   const anchors=s=>s.paths.handles.filter(h=>h.kind==='Anchor');
   const absolute=(s,h)=>({x:s.surface.x+h.x,y:s.surface.y+h.y});
@@ -41,7 +47,7 @@ export async function anchorSelection({page,snapshot,click,check,directory}) {
       const a=anchors(before).find(h=>h.segment===segment),b=anchors(preview).find(h=>h.segment===segment);const selected=segment!==1;
       assert.ok(Math.abs((b.x-a.x)-(selected?24:0))<1);assert.ok(Math.abs((b.y-a.y)-(selected?16:0))<1);
     }
-    await page.mouse.up();await page.keyboard.up('Alt');await wait();const s=await snapshot();assert.equal(s.revision,before.revision+1);assert.equal(s.paths.anchorCount,2);
+    await page.mouse.up();await page.keyboard.up('Alt');const s=await committed(before.revision);assert.equal(s.paths.anchorCount,2);
     const edited=s.nodes.find(n=>n.id===id).properties.Data;assert.notEqual(edited,original);await undo(original,id);
     await click('Redo');await page.waitForFunction(({id,data})=>globalThis.designSpaceDiagnostics.nodes.find(n=>n.id===id).properties.Data===data,{id,data:edited});await undo(original,id);
   });
@@ -63,28 +69,28 @@ export async function anchorSelection({page,snapshot,click,check,directory}) {
     await page.keyboard.press('Control+Shift+A');await wait();s=await snapshot();assert.equal(s.paths.anchorCount,0);assert.equal(s.selection.length,1);assert.equal(s.revision,revision);
   });
   await check('keyboard batch nudge moves each point by one artboard unit',async()=>{
-    await page.keyboard.press('Control+A');await wait();const before=await snapshot();await page.keyboard.press('ArrowRight');await wait();const after=await snapshot();assert.equal(after.revision,before.revision+1);
+    await page.keyboard.press('Control+A');await wait();const before=await snapshot();await page.keyboard.press('ArrowRight');const after=await committed(before.revision);
     for(const a of anchors(before)){const b=anchors(after).find(h=>h.segment===a.segment);assert.ok(Math.abs(b.x-a.x-before.surface.zoom)<0.01);assert.ok(Math.abs(b.y-a.y)<0.01);}
     assert.equal(after.paths.anchorCount,5);await undo(original,id);
   });
   await check('point alignment is a single undoable geometry operation',async()=>{
-    await tapHandle(-1);await tapHandle(0,true);const before=await snapshot();await command('Align Top');const s=await snapshot();const a=anchors(s).find(h=>h.segment===-1),b=anchors(s).find(h=>h.segment===0);
+    await tapHandle(-1);await tapHandle(0,true);const before=await snapshot();await command('Align Top');const s=await committed(before.revision);const a=anchors(s).find(h=>h.segment===-1),b=anchors(s).find(h=>h.segment===0);
     assert.ok(Math.abs(a.y-b.y)<0.01);assert.equal(s.revision,before.revision+1);assert.equal(s.sourceDirty,false);await undo(original,id);
   });
   await check('point distribution equalizes intervals without moving endpoints',async()=>{
-    await command('Select points');const before=await snapshot(),x=anchors(before).map(h=>h.x).sort((a,b)=>a-b);await command('Distribute X');const s=await snapshot(),next=anchors(s).map(h=>h.x).sort((a,b)=>a-b);
+    await command('Select points');const before=await snapshot(),x=anchors(before).map(h=>h.x).sort((a,b)=>a-b);await command('Distribute X');const s=await committed(before.revision),next=anchors(s).map(h=>h.x).sort((a,b)=>a-b);
     assert.ok(Math.abs(next[0]-x[0])<0.01&&Math.abs(next.at(-1)-x.at(-1))<0.01);for(let i=1;i<next.length;i++)assert.ok(Math.abs(next[i]-next[i-1]-(x.at(-1)-x[0])/4)<0.01);
     assert.equal(s.revision,before.revision+1);await page.screenshot({path:directory+'/point-distribution.png'});await undo(original,id);
   });
   await check('batch point deletion retains the object and undoes exactly',async()=>{
-    await tapHandle(-1);await tapHandle(0,true);const before=await snapshot();await page.keyboard.press('Delete');await wait();let s=await snapshot();assert.equal(anchors(s).length,3);assert.equal(s.nodes.length,before.nodes.length);assert.equal(s.revision,before.revision+1);assert.equal(s.paths.anchorCount,0);await undo(original,id);
+    await tapHandle(-1);await tapHandle(0,true);const before=await snapshot();await page.keyboard.press('Delete');let s=await committed(before.revision);assert.equal(anchors(s).length,3);assert.equal(s.nodes.length,before.nodes.length);assert.equal(s.revision,before.revision+1);assert.equal(s.paths.anchorCount,0);await undo(original,id);
   });
   await check('Escape cancels multi-anchor dragging without committing',async()=>{
     await command('Select points');const before=await snapshot(),p=absolute(before,anchors(before)[0]);await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x+18,p.y-16,{steps:8});await page.keyboard.press('Escape');await page.mouse.up();await wait();
     const s=await snapshot();assert.equal(s.revision,before.revision);assert.equal(s.nodes.find(n=>n.id===id).properties.Data,original);assert.equal(s.paths.anchorCount,5);
   });
   await check('batch-authored geometry survives save and recovery',async()=>{
-    await page.keyboard.press('ArrowDown');await wait();const data=(await snapshot()).nodes.find(n=>n.id===id).properties.Data;assert.notEqual(data,original);
+    const before=await snapshot();await page.keyboard.press('ArrowDown');const saved=await committed(before.revision);const data=saved.nodes.find(n=>n.id===id).properties.Data;assert.notEqual(data,original);
     await click('Save design');await page.waitForTimeout(1500);await page.reload({waitUntil:'domcontentloaded'});
     await page.waitForFunction(({id,data})=>globalThis.designSpaceDiagnostics?.ready&&globalThis.designSpaceDiagnostics.nodes.find(n=>n.id===id)?.properties.Data===data,{id,data},{timeout:180000});assert.equal((await snapshot()).sourceDirty,false);
   });
