@@ -15,19 +15,27 @@ public sealed partial class StoryboardInspectorControl : ScrollViewer,IDisposabl
     private DesignStoryboard? _displayed;
     private StoryboardSettingsControl? _workspaceEditor;
     private ImmutableDictionary<string,string> _workspaceInitialFields=ImmutableDictionary<string,string>.Empty;
-    private bool _workspaceStale;
+    private bool _workspaceStale,_applyingSettings;
     public event EventHandler<string>? Error;
     public StoryboardInspectorControl(DesignSession session,TimelineControl timeline)
     {
         _session=session;_timeline=timeline;Content=_body;HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled;
         _session.DocumentChanged+=Changed;_timeline.SelectedStoryboardChanged+=Changed;Refresh();
     }
-    private void Changed(object? sender,EventArgs e)=>Refresh();
+    private void Changed(object? sender,EventArgs e)
+    {
+        if(!_applyingSettings&&CaptureWorkspaceDraft().HasChanges&&!ReferenceEquals(_displayed,_timeline.ActiveStoryboard))
+        {
+            _workspaceStale=true;_workspaceEditor?.ShowError("Timing draft retained. Reload before applying to a changed storyboard.");return;
+        }
+        Refresh();
+    }
     public void Refresh()
     {
         var board=_timeline.ActiveStoryboard;
         if(ReferenceEquals(board,_displayed) && _body.Children.Count>0) return;
-        _displayed=board;_workspaceStale=false;_body.Children.Clear();
+        _displayed=board;_workspaceStale=false;_workspaceEditor=null;_body.Children.Clear();
+        _body.Children.Add(new StudioButton("Reload timing",()=>{_workspaceOrphan=null;_displayed=null;Refresh();},"Reload storyboard timing"));
         if(board is null) { _body.Children.Add(StudioTheme.Text("Create a storyboard in the timeline first."));return; }
         _body.Children.Add(StudioTheme.Text("Timing · "+board.Name,13));
         var editor=_workspaceEditor=new StoryboardSettingsControl(board);_body.Children.Add(editor);_workspaceInitialFields=editor.CaptureFields();
@@ -37,7 +45,9 @@ public sealed partial class StoryboardInspectorControl : ScrollViewer,IDisposabl
             {
                 if(_workspaceStale||!ReferenceEquals(board,_timeline.ActiveStoryboard)) throw new InvalidOperationException("The storyboard changed. Review its current settings.");
                 var updated=editor.CreateUpdated(); if(updated==board) return;
-                _session.Execute("Edit storyboard timing",d=>d with { Storyboards=d.Storyboards.Select(b=>b.Id==board.Id ? updated : b).ToImmutableArray() });
+                _applyingSettings=true;
+                try{_session.Execute("Edit storyboard timing",d=>d with { Storyboards=d.Storyboards.Select(b=>b.Id==board.Id ? updated : b).ToImmutableArray() });}
+                finally{_applyingSettings=false;}
                 _timeline.Scrub(Math.Min(_timeline.Time,updated.Duration));
             }
             catch(Exception e) { editor.ShowError(e.Message);Error?.Invoke(this,e.Message); }

@@ -45,7 +45,8 @@ public sealed partial class SampleDataControl : IWorkspaceDraftEditor
 }
 public sealed partial class StrokeEditorControl : IWorkspaceDraftEditor
 {
-    public DesignerPanelDraft CaptureWorkspaceDraft()=>new()
+    private DesignerPanelDraft? _workspaceOrphan;
+    public DesignerPanelDraft CaptureWorkspaceDraft()=>_workspaceOrphan ?? new()
     {
         Values=_values.ToImmutableDictionary(p=>p.Key,p=>p.Value()),Originals=_original.ToImmutableDictionary(),
         Targets=_targets.ToImmutableArray(),HasChanges=_dirty,MatchesDesign=_revision==_session.Revision
@@ -55,6 +56,10 @@ public sealed partial class StrokeEditorControl : IWorkspaceDraftEditor
         _dirty=false;_restoreTargets=state?.HasChanges==true ? state.Targets.ToImmutableHashSet() : null;
         try{Refresh(true);}finally{_restoreTargets=null;}
         if(state?.HasChanges!=true)return;
+        if(_values.Count==0)
+        {
+            _workspaceOrphan=state with{MatchesDesign=false};_dirty=true;_status.Text="The draft target is unavailable. Its values are retained in this workspace; Reload discards them.";return;
+        }
         _syncing=true;
         foreach(var p in state.Values)if(_setters.TryGetValue(p.Key,out var setter))setter(p.Value);
         foreach(var p in state.Originals)if(_original.ContainsKey(p.Key))_original[p.Key]=p.Value;
@@ -66,14 +71,14 @@ public sealed partial class StateTransitionEditorControl : IWorkspaceDraftEditor
 {
     public DesignerPanelDraft CaptureWorkspaceDraft()=>new()
     {
-        Values=ImmutableDictionary<string,string>.Empty.Add("Group",_group.Text).Add("From",_from.Text).Add("To",_to.Text).Add("Duration",_duration.Text).Add("Easing",_easing.SelectedItem as string??"Linear"),
-        HasChanges=_dirty,MatchesDesign=_revision==_session.Revision
+        Values=CurrentFields(),Originals=_initialFields,
+        HasChanges=CurrentFields().Any(p=>_initialFields.GetValueOrDefault(p.Key)!=p.Value),MatchesDesign=_revision==_session.Revision
     };
     public void RestoreWorkspaceDraft(DesignerPanelDraft? state)
     {
         _dirty=false;Reload();if(state is null)return;_refreshing=true;
         _group.Text=state.Values.GetValueOrDefault("Group",_states.SelectedGroup);_from.Text=state.Values.GetValueOrDefault("From","*");_to.Text=state.Values.GetValueOrDefault("To","*");_duration.Text=state.Values.GetValueOrDefault("Duration","0.3");_easing.SelectedItem=state.Values.GetValueOrDefault("Easing","Linear");
-        _revision=state.MatchesDesign ? _session.Revision : -1;_dirty=state.HasChanges;_refreshing=false;
+        _initialFields=state.Originals.Count>0?state.Originals:CurrentFields();_revision=state.MatchesDesign ? _session.Revision : -1;_dirty=state.HasChanges;_refreshing=false;
     }
 }
 public sealed partial class StoryboardSettingsControl
@@ -90,19 +95,26 @@ public sealed partial class StoryboardSettingsControl
 }
 public sealed partial class StoryboardInspectorControl : IWorkspaceDraftEditor
 {
+    private DesignerPanelDraft? _workspaceOrphan;
     public DesignerPanelDraft CaptureWorkspaceDraft()
     {
+        if(_workspaceOrphan is not null)return _workspaceOrphan;
         if(_displayed is null||_workspaceEditor is null)return new();
         var fields=_workspaceEditor.CaptureFields();var changed=fields.Any(p=>_workspaceInitialFields.GetValueOrDefault(p.Key)!=p.Value);
         return new(){Values=fields.Add("Board",_displayed.Id.ToString()),Originals=_workspaceInitialFields,HasChanges=changed,MatchesDesign=!_workspaceStale&&ReferenceEquals(_displayed,_timeline.ActiveStoryboard)};
     }
     public void RestoreWorkspaceDraft(DesignerPanelDraft? state)
     {
-        _displayed=null;_workspaceEditor=null;Refresh();
+        _workspaceOrphan=null;_displayed=null;_workspaceEditor=null;Refresh();
         if(state?.HasChanges==true&&_workspaceEditor is not null&&state.Values.GetValueOrDefault("Board")==_displayed?.Id.ToString())
         {
             _workspaceEditor.RestoreFields(state.Values);_workspaceInitialFields=state.Originals;_workspaceStale=!state.MatchesDesign;
-            if(_workspaceStale)_workspaceEditor.ShowError("This retained timing draft is stale; reselect the storyboard to reload it.");
+            if(_workspaceStale)_workspaceEditor.ShowError("This retained timing draft is stale; Reload timing to discard it.");
+        }
+        else if(state?.HasChanges==true)
+        {
+            _workspaceOrphan=state with{MatchesDesign=false};
+            _body.Children.Add(DesignSpace.Docking.Uno.StudioTheme.Text("A draft for a missing storyboard is retained in this workspace. Reload timing discards it.",11,"#FFD09B"));
         }
     }
 }

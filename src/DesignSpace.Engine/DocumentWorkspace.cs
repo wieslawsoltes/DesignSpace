@@ -26,7 +26,7 @@ public sealed class WorkspaceDocument
     }
 }
 /// <summary>UI-thread multi-document coordinator. One stable session drives existing controls; inactive tabs own isolated immutable history.</summary>
-public sealed class DocumentWorkspace : IDisposable
+public sealed partial class DocumentWorkspace : IDisposable
 {
     private readonly List<WorkspaceDocument> _documents=[];
     private bool _changing;

@@ -56,7 +56,9 @@ public sealed partial class WorkbenchView
     public async Task ImportImageAsync()
     {
         if(_platform is not IWorkbenchAssetPlatform assets)throw new InvalidOperationException("The host has not supplied an image picker.");
+        var context=Workspace.CaptureOperation();
         var asset=await assets.OpenImageAsync();if(asset is null)return;
+        Workspace.RequireCurrent(context);
         var source=EmbeddedImages.CreateSource(asset.Bytes,asset.MimeType);
         using var cache=new EmbeddedImages();var image=cache.Get(source,out var error);if(image is null)throw new InvalidOperationException(error);
         var scale=Math.Min(1,480d/Math.Max(image.Width,image.Height));

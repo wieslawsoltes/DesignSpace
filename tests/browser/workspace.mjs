@@ -67,7 +67,9 @@ try{
     await page.screenshot({path:directory+'/animation-workspace.png'});await page.keyboard.press('F6');await wait(()=>globalThis.designSpaceDiagnostics.workspace.profile==='Design');assert.equal((await snapshot()).workspace.timelineHeight,s.workspace.timelineHeight);
   });
   await check('sample-data drafts remain attached to their document',async()=>{
-    await select(second);await click('Data');await edit('Sample data JSON','{"Title":"Second draft"}');await select(main);assert.notEqual((await snapshot()).controls.find(c=>c.Name==='Sample data JSON')?.Text,'{"Title":"Second draft"}');
+    await select(second);await click('Data');await edit('Sample data JSON','{"Title":"Second draft"}');
+    await wait(()=>{const raw=localStorage.getItem('designspace.v1.recovery.json');if(!raw)return false;const envelope=JSON.parse(raw);if(!envelope.Workspace)return false;const w=JSON.parse(envelope.Workspace);return w.documents.find(d=>d.id===w.activeDocumentId)?.editor.panels.Data?.values.JSON==='{"Title":"Second draft"}';});
+    await select(main);assert.notEqual((await snapshot()).controls.find(c=>c.Name==='Sample data JSON')?.Text,'{"Title":"Second draft"}');
     await select(second);assert.equal((await snapshot()).controls.find(c=>c.Name==='Sample data JSON').Text,'{"Title":"Second draft"}');const rev=(await snapshot()).revision;await click('Apply sample data');await changed(rev);await click('Assets');
   });
   await check('stroke panel drafts survive tab changes without editing the base',async()=>{
@@ -102,6 +104,20 @@ try{
     const before=await snapshot();const chosen=page.waitForEvent('filechooser');await click('Open design');await(await chosen).setFiles({name:'Imported.xaml',mimeType:'text/plain',buffer:Buffer.from('<Canvas xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" Width="480" Height="360"><TextBlock Text="Imported document"/></Canvas>')});
     await wait(n=>globalThis.designSpaceDiagnostics.workspace.documents.length===n+1,before.workspace.documents.length);assert.ok((await snapshot()).nodes.some(n=>n.properties.Text==='Imported document'));const id=(await snapshot()).workspace.active;await close(id);assert.equal((await snapshot()).workspace.documents.length,2);
   });
+  await check('orphaned stroke drafts retain their text until explicitly discarded',async()=>{
+    await select(second);await click('Asset category Shapes');await click('Add Rectangle');await click('Open Stroke panel');const before=await snapshot();const target=before.nodes.find(n=>n.name===before.selection[0]);
+    await edit('Stroke Dash array','0 0');await click('Tool Selection (V)');const rev=(await snapshot()).revision;await page.keyboard.press('Delete');await changed(rev);
+    await select(main);await select(second);const saved=await download('Save workspace','orphaned-stroke.designspace-workspace');const draft=saved.documents.find(d=>d.id===second).editor.panels.Stroke;
+    assert.equal(draft.values.StrokeDashArray,'0 0');assert.equal(draft.hasChanges,true);assert.ok(draft.targets.includes(target.id));assert.ok(!saved.documents.find(d=>d.id===second).document.root.children.some(n=>n.id===target.id));
+    await click('Reload stroke settings');await click('Properties');
+  });
+  await check('timing and template drafts remain isolated between documents',async()=>{
+    await select(main);await click('Edit storyboard timing');await edit('Storyboard duration','invalid duration');await select(second);await select(main);assert.equal((await snapshot()).controls.find(c=>c.Name==='Storyboard duration').Text,'invalid duration');await click('Reload storyboard timing');
+    await click('Open Templates panel');await edit('ControlTemplate source','<ControlTemplate incomplete');await select(second);await select(main);assert.equal((await snapshot()).controls.find(c=>c.Name==='ControlTemplate source').Text,'<ControlTemplate incomplete');
+    const snapshotFile=await download('Save workspace','template-draft.designspace-workspace');assert.equal(snapshotFile.documents.find(d=>d.id===main).editor.panels.Templates.hasChanges,true);
+    // Retain this deliberate draft through later workspace export/recovery, not a native-document save.
+    await click('Properties');await select(second);
+  });
   await check('workspace download preserves invalid drafts and all document identities',async()=>{
     await select(second);await source('<Retained invalid source');savedWorkspace=await download('Save workspace','all-documents.designspace-workspace');assert.equal(savedWorkspace.documents.length,2);assert.equal(savedWorkspace.activeDocumentId,second);assert.equal(savedWorkspace.documents.find(d=>d.id===second).editor.sourceDraft,'<Retained invalid source');assert.equal((await snapshot()).sourceDirty,true);
   });
@@ -110,7 +126,9 @@ try{
     let s=await snapshot();assert.equal(s.workspace.active,second);assert.equal(s.xaml,'<Retained invalid source');assert.equal(s.sourceDirty,true);await select(main);assert.ok((await snapshot()).nodes.some(n=>n.id===firstButton.id));assert.equal((await snapshot()).canUndo,false);await select(second);assert.equal((await snapshot()).xaml,'<Retained invalid source');
   });
   await check('workspace import is a real upload with preserved drafts',async()=>{
-    const fresh=await browser.newContext({viewport:{width:1600,height:1000},acceptDownloads:true});page=await fresh.newPage();observe(page);await start();const pending=page.waitForEvent('filechooser');await click('Open design');await(await pending).setFiles(directory+'/all-documents.designspace-workspace');
+    const fresh=await browser.newContext({viewport:{width:1600,height:1000},acceptDownloads:true});page=await fresh.newPage();observe(page);await start();
+    const clean=await download('Save workspace','clean-workspace.designspace-workspace');assert.equal(clean.documents[0].hasUnsavedChanges,false);assert.ok(Object.values(clean.documents[0].editor.panels).every(p=>!p.hasChanges),'Unchanged panel initialization is not a user draft');
+    const pending=page.waitForEvent('filechooser');await click('Open design');await(await pending).setFiles(directory+'/all-documents.designspace-workspace');
     await wait(()=>globalThis.designSpaceDiagnostics.workspace.documents.length===2);assert.equal((await snapshot()).workspace.active,second);assert.equal((await snapshot()).xaml,'<Retained invalid source');await page.screenshot({path:directory+'/recovered-documents.png'});
   });
   await check('opening an invalid workspace does not replace live documents',async()=>{

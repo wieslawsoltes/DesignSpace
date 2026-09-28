@@ -55,6 +55,7 @@ public sealed partial class StrokeEditorControl : Grid,IDisposable
     private void Changed(object? sender,EventArgs e){if(!_applying)Refresh();}
     private void Refresh(bool discard=false)
     {
+        if(discard)_workspaceOrphan=null;
         if(_dirty&&!discard){_status.Text="Draft retained. Apply only to its original revision, or Reload.";return;}
         _syncing=true;
         try

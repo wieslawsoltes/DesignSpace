@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using DesignSpace.Core;
 using DesignSpace.Engine;
 using DesignSpace.Docking.Uno;
@@ -19,6 +20,10 @@ public sealed partial class StateTransitionEditorControl : ScrollViewer,IDisposa
     private readonly TextBlock _message=StudioTheme.Text("",11,"#FFD09B");
     private long _revision;
     private bool _refreshing,_dirty;
+    private ImmutableDictionary<string,string> _initialFields=ImmutableDictionary<string,string>.Empty;
+    private ImmutableDictionary<string,string> CurrentFields()=>ImmutableDictionary<string,string>.Empty
+        .Add("Group",_group.Text).Add("From",_from.Text).Add("To",_to.Text).Add("Duration",_duration.Text).Add("Easing",_easing.SelectedItem as string??"Linear");
+    private void DraftChanged(){if(!_refreshing)_dirty=CurrentFields().Any(p=>_initialFields.GetValueOrDefault(p.Key)!=p.Value);}
     public StateTransitionEditorControl(DesignSession session,StatesControl states)
     {
         _session=session;_states=states;HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled;
@@ -37,8 +42,8 @@ public sealed partial class StateTransitionEditorControl : ScrollViewer,IDisposa
         Row(("Preview on/off","Toggle transition preview in editor",()=>states.SetTransitionsEnabled(!states.TransitionsEnabled)),("Stop","Complete visual transitions",()=>states.StopTransitions()));
         Label("Select a saved rule to edit it. Enable Animate in States, then select states to preview. Recording or editing the document completes the preview without writing animation frames to history.");
         body.Children.Add(_rules);_message.TextWrapping=TextWrapping.Wrap;body.Children.Add(_message);
-        foreach(var input in new[]{_group,_from,_to,_duration})input.TextChanged+=(_,_)=>{if(!_refreshing)_dirty=true;};
-        _easing.SelectionChanged+=(_,_)=>{if(!_refreshing)_dirty=true;};
+        foreach(var input in new[]{_group,_from,_to,_duration})input.TextChanged+=(_,_)=>{DraftChanged();};
+        _easing.SelectionChanged+=(_,_)=>{DraftChanged();};
         _session.DocumentChanged+=Changed;states.GroupChanged+=GroupChanged;Reload();
     }
     private void Guard(Action action){try{action();_message.Text="";}catch(Exception e){_message.Text=e.Message;}}
@@ -57,12 +62,12 @@ public sealed partial class StateTransitionEditorControl : ScrollViewer,IDisposa
             var label=(rule.From??"Any")+" to "+(rule.To??"Any")+"   "+Numbers.Format(rule.Duration)+"s | "+rule.Easing;
             _rules.Children.Add(new StudioButton(label,()=>LoadRule(rule),"Edit visual transition "+(rule.From??"*")+" to "+(rule.To??"*")));
         }
-        _revision=_session.Revision;_dirty=false;_refreshing=false;_message.Text="";
+        _initialFields=CurrentFields();_revision=_session.Revision;_dirty=false;_refreshing=false;_message.Text="";
     }
     private void LoadRule(DesignTransition rule)
     {
         _refreshing=true;_from.Text=rule.From??"*";_to.Text=rule.To??"*";_duration.Text=Numbers.Format(rule.Duration);_easing.SelectedItem=rule.Easing;
-        _revision=_session.Revision;_dirty=false;_refreshing=false;_message.Text="";
+        _initialFields=CurrentFields();_revision=_session.Revision;_dirty=false;_refreshing=false;_message.Text="";
     }
     private static string? Selector(string value)=>value.Trim() is "" or "*" ? null : value.Trim();
     private void Save()

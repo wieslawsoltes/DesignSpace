@@ -128,10 +128,12 @@ public sealed partial class WorkbenchView
         try { await _platform.WriteClipboardAsync(_clipboard); SetStatus("Copied "+ids.Count+" object(s)"); }
         catch { SetStatus("Copied "+ids.Count+" object(s) to the in-app clipboard; system clipboard access was denied."); }
     }
-    private async Task CutAsync() { await CopyAsync(); Session.Delete(); }
+    private async Task CutAsync() { var context=Workspace.CaptureOperation();await CopyAsync();Workspace.RequireCurrent(context);Session.Delete(); }
     private async Task PasteAsync()
     {
+        var context=Workspace.CaptureOperation();
         string? text; try { text=await _platform.ReadClipboardAsync(); } catch { text=_clipboard; }
+        Workspace.RequireCurrent(context);
         if(string.IsNullOrEmpty(text)) text=_clipboard;
         if(!text.StartsWith(ClipboardHeader,StringComparison.Ordinal)) throw new InvalidOperationException("The clipboard does not contain DesignSpace objects. Use Open to import XAML.");
         var copied=NativeDocumentCodec.Read(text[ClipboardHeader.Length..]);
@@ -143,6 +145,7 @@ public sealed partial class WorkbenchView
         }
         var children=copied.Root.Children.Select(Clone).Select(n=>n.Set("Canvas.Left",n.Number("Canvas.Left")+16).Set("Canvas.Top",n.Number("Canvas.Top")+16)).ToImmutableArray();
         var host=Session.Selection.Select(id=>Session.Document.Root.Find(id)).FirstOrDefault(n=>n?.Type=="Canvas") ?? Session.Document.Root.DescendantsAndSelf().FirstOrDefault(n=>n.Type=="Canvas") ?? Session.Document.Root;
+        if(Session.Index.IsLocked(host.Id))throw new InvalidOperationException("Unlock the paste container and its ancestors first.");
         Session.Execute("Paste objects",d=>d with { Root=d.Root.Update(host.Id,n=>n with { Children=n.Children.AddRange(children) }) },children.Select(n=>n.Id));
     }
 }

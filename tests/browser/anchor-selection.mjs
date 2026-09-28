@@ -30,10 +30,12 @@ export async function anchorSelection({page,snapshot,click,check,directory}) {
   async function undo(data,id){await click('Undo');await page.waitForFunction(({id,data})=>globalThis.designSpaceDiagnostics.nodes.find(n=>n.id===id)?.properties.Data===data,{id,data});}
   let id,original;
   await check('multi-point fixture is authored through Pen',async()=>{
-    await click('Tool Pen (P)');
+    await click('Tool Pen (P)');const before=await snapshot();const previousIds=before.nodes.map(n=>n.id);
     for(const [x,y] of [[300,350],[320,290],[400,300],[440,360],[360,440],[300,350]]){const p=await world(x,y);await page.mouse.click(p.x,p.y);await page.waitForTimeout(80);}
-    await wait();let s=await snapshot();const n=s.nodes.find(n=>n.name===s.selection[0]);assert.equal(n.type,'Path');id=n.id;original=n.properties.Data;
-    await click('Tool Direct Selection (A)');s=await snapshot();assert.equal(anchors(s).length,5);
+    // Completion is asynchronous; retain the newly committed identity, never the preceding Pencil fixture.
+    await page.waitForFunction(({count,revision})=>{const s=globalThis.designSpaceDiagnostics;return s.nodes.length===count+1&&s.revision===revision+1;},{count:before.nodes.length,revision:before.revision});
+    let s=await snapshot();const created=s.nodes.filter(n=>!previousIds.includes(n.id));assert.equal(created.length,1);const n=created[0];assert.equal(n.type,'Path');assert.deepEqual(s.selection,[n.name]);id=n.id;original=n.properties.Data;
+    await click('Tool Direct Selection (A)');s=await snapshot();assert.equal(s.paths.owner,id);assert.equal(anchors(s).length,5);
   });
   await check('Shift selection toggles anchors without history or snapping',async()=>{
     const revision=(await snapshot()).revision;await tapHandle(-1);await tapHandle(0,true);let s=await snapshot();assert.equal(s.paths.anchorCount,2);

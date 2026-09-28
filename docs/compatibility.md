@@ -4,7 +4,7 @@ DesignSpace is an independent Blend-style designer. Familiar panels do not imply
 
 | Area | Implemented | Remaining boundary |
 | --- | --- | --- |
-| Workspace | Dark tools, Assets, Project, States, Data, Layout, Objects, Properties, Resources, Templates, Timing, Paths, Transitions, Stroke and design/split/source views | Desktop-oriented density; no pixel-exact Blend, complete accessibility or mobile/touch qualification |
+| Workspace | Document tabs, Project document list, pin/reorder/close, independent history/selection/source and supported panel drafts, per-document viewport and horizontal/vertical source splits, Design/Animation profiles, overflowing command strips | One active designer surface; no complete Visual Studio project model, pixel-exact Blend, complete accessibility or mobile/touch qualification |
 | Docking | Resizable columns/stacked panes, tabs, hide/show/reset and in-application floating/dragging | No arbitrary docking graph, native floating windows, cross-window transfer or persisted floating coordinates |
 | Visual editing | Creation, selection, Canvas move/resize, snapping, grouping, duplication, alignment, distribution, z-order, history and Canvas reparenting APIs | Grouping requires contiguous Canvas siblings; arbitrary panel reparenting and complete transformed editing remain unfinished |
 | Picking | Inherited transforms, native fill/stroke outline picking in the Skia host, real dash gaps/caps, fill-rule holes, clipping, visibility and locks | Portable snapshots without `IShapeHitTest` retain approximate picking; this is not pixel-exact Microsoft runtime/effect picking |
@@ -22,8 +22,12 @@ DesignSpace is an independent Blend-style designer. Familiar panels do not imply
 | States | Group/state create/rename/delete, concurrent disjoint-property groups, generated transition editor, numeric/solid-color interpolation and cubic easing, interrupted-transition continuity, effective-value recording/reset, undo and source/native persistence | No explicit transition storyboards, point-valued interpolation, trigger editor or automatic template VSM runtime; state names remain globally unique and conflicting active-group properties are rejected; inline gradients remain a base operation |
 | Data | JSON sample data and simple Binding property paths | No CLR providers, converters, expressions, collection templates, service adapters or full binding runtime |
 | XAML | Inert validated import, isolated source drafts, named identity reconciliation, supported timing/state export and retained property elements | Not lossless XML: formatting, comments and mixed text are not preserved exactly; export is Uno/WinUI-oriented, not qualified across WPF versions |
-| Files/project | Native `.designspace`, XAML and PNG export, consistent browser upload/copy import and local recovery | No solution/project compilation, debugger, multi-document project system, Git integration or cloud synchronization |
+| Files/project | Native `.designspace`, XAML/PNG export, multi-document `.designspace-workspace` files, Save All, save/discard/cancel close, all-document local recovery and legacy migration | No solution/project compilation, debugger, folder/asset dependency project system, live file watching, Git integration or cloud synchronization; history is in-memory only |
 | Collaboration | Local editing requires no service/account | No multi-user synchronization, authentication, permissions or enterprise administration |
+
+## Document workspaces
+
+New/Open add tabs rather than replace the active design. Documents keep isolated in-memory history, selection, viewport and supported drafts while sharing one active control tree and renderer. Save All returns to the original tab; Close protects unsaved data and unapplied drafts. Workspace files retain the entire open set, including invalid source as inert text, but not undo history or active animation/pointer gestures. Browser-reserved shortcuts remain host-dependent. See [workspace contracts, limits and qualification](workspaces.md).
 
 ## Stroke authoring
 
@@ -77,4 +81,4 @@ CI runs portable editing, compatibility, image/layout/shaping, vector geometry/p
 
 ## Largest remaining parity areas
 
-The remaining substantial areas are complete template/style/behavior semantics; multi-object point selection, advanced tangent/brush authoring; rich typography and bidi/fallback; nested animation, explicit state-transition storyboards and automatic triggers; multi-document project tooling; native multi-window docking; accessibility; and cross-platform runtime/GPU qualification. Extend shared libraries and tests rather than introducing a separate browser imitation.
+The remaining substantial areas are complete template/style/behavior semantics; multi-object point selection, advanced tangent/brush authoring; rich typography and bidi/fallback; nested animation, explicit state-transition storyboards and automatic triggers; full solution/project tooling and simultaneous document surfaces; native multi-window docking; accessibility; and cross-platform runtime/GPU qualification. Extend shared libraries and tests rather than introducing a separate browser imitation.

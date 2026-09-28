@@ -5,13 +5,14 @@ using DesignSpace.Controls.Uno;
 using DesignSpace.Docking.Uno;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 namespace DesignSpace.Workbench.Uno;
 
 public sealed partial class WorkbenchView
 {
     private readonly DocumentTabsControl _documentTabs=new();
     private readonly StackPanel _projectDocuments=new(){Spacing=2};
-    private bool _switchingDocuments,_documentIoBusy;
+    private bool _switchingDocuments,_documentIoBusy,_captureEditorQueued;
     private ContentDialog? _documentDialog;
     public UIElement? DocumentDialog=>_documentDialog;
     public bool DocumentOperationPending=>_documentIoBusy;
@@ -31,14 +32,29 @@ public sealed partial class WorkbenchView
         _documentTabs.CloseOthersRequested+=(_,id)=>_=GuardAsync(()=>CloseOtherDocumentsAsync(id));
         _documentTabs.PinRequested+=(_,id)=>Guard(()=>{Workspace.Pin(id,!Workspace.Find(id).IsPinned);QueueWorkspaceRecovery();});
         _documentTabs.MoveRequested+=(_,change)=>Guard(()=>{Workspace.Move(change.Id,change.Index);QueueWorkspaceRecovery();});
-        Workspace.Changed+=WorkspaceChanged;UpdateDocumentChrome();
+        Workspace.Changed+=WorkspaceChanged;
+        AddHandler(UIElement.KeyUpEvent,new KeyEventHandler((_,_)=>ScheduleEditorCapture()),true);
+        AddHandler(UIElement.PointerReleasedEvent,new PointerEventHandler((_,_)=>ScheduleEditorCapture()),true);
+        AddHandler(UIElement.PointerWheelChangedEvent,new PointerEventHandler((_,_)=>ScheduleEditorCapture()),true);
+        UpdateDocumentChrome();
+    }
+    // Sample text accepted by native controls after their deferred input notifications.
+    // One queued capture and the existing debounced save cover auxiliary drafts too.
+    private void ScheduleEditorCapture()
+    {
+        if(_captureEditorQueued||!_initialized||_loading||_disposed)return;
+        _captureEditorQueued=true;DispatcherQueue.TryEnqueue(()=>
+        {
+            _captureEditorQueued=false;if(_switchingDocuments||_disposed)return;
+            Guard(()=>{CaptureCurrentDocument();UpdateDocumentChrome();QueueWorkspaceRecovery();});
+        });
     }
     private void WorkspaceChanged(object? sender,EventArgs e){if(!_switchingDocuments){UpdateDocumentChrome();QueueWorkspaceRecovery();}}
     private void QueueWorkspaceRecovery(){if(_initialized&&!_loading&&!_switchingDocuments&&!_disposed){_saveTimer.Stop();_saveTimer.Start();}}
     private void UpdateDocumentChrome()
     {
         if(_switchingDocuments)return;
-        var tabs=Workspace.Documents.Select(d=>new DocumentTabItem(d.Id,TabTitle(d),d.IsDirty||(d.Id==Workspace.ActiveDocumentId ? Source.IsDirty : d.Editor.HasDrafts),d.Id==Workspace.ActiveDocumentId,d.IsPinned)).ToArray();
+        var tabs=Workspace.Documents.Select(d=>new DocumentTabItem(d.Id,TabTitle(d),d.IsDirty||(d.Id==Workspace.ActiveDocumentId ? Source.IsDirty||d.Editor.Panels.Values.Any(p=>p.HasChanges) : d.Editor.HasDrafts),d.Id==Workspace.ActiveDocumentId,d.IsPinned)).ToArray();
         _documentTabs.SetItems(tabs);
         // Refresh only when labels or active identity change, not every frame/selection notification.
         var key=string.Join("|",tabs.Select(d=>$"{d.Id}:{d.Title}:{d.Dirty}:{d.Active}:{d.Pinned}"));
@@ -139,6 +155,11 @@ public sealed partial class WorkbenchView
     {
         var id=Workspace.ActiveDocumentId;var input=StudioTheme.Input(_nativeName,"Document file name");
         var dialog=new ContentDialog{XamlRoot=XamlRoot,Title="Rename document",Content=input,PrimaryButtonText="Rename",CloseButtonText="Cancel"};
-        if(await dialog.ShowAsync()==ContentDialogResult.Primary){Workspace.Rename(id,input.Text.Trim());UpdateTitle();QueueWorkspaceRecovery();}
+        if(await dialog.ShowAsync()==ContentDialogResult.Primary)
+        {
+            var name=input.Text.Trim();WorkspaceValidator.ValidateFileName(name);
+            if(!name.EndsWith(".designspace",StringComparison.OrdinalIgnoreCase))name=Path.GetFileNameWithoutExtension(name)+".designspace";
+            Workspace.Rename(id,name);UpdateTitle();QueueWorkspaceRecovery();
+        }
     }
 }
