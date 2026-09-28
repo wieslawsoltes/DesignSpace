@@ -14,11 +14,11 @@ public static class WorkspaceCodec
     {
         WorkspaceValidator.Validate(workspace);
         var text=JsonSerializer.Serialize(workspace,WorkspaceJsonContext.Default.DesignWorkspaceSnapshot);
-        if(text.Length>WorkspaceValidator.MaxCharacters)throw new InvalidDataException("Serialized workspace exceeds 16 MiB.");return text;
+        if(System.Text.Encoding.UTF8.GetByteCount(text)>WorkspaceValidator.MaxCharacters)throw new InvalidDataException("Serialized workspace exceeds 16 MiB.");return text;
     }
     public static DesignWorkspaceSnapshot Read(string text)
     {
-        ArgumentNullException.ThrowIfNull(text);if(text.Length>WorkspaceValidator.MaxCharacters)throw new InvalidDataException("Workspace exceeds 16 MiB.");
+        ArgumentNullException.ThrowIfNull(text);if(System.Text.Encoding.UTF8.GetByteCount(text)>WorkspaceValidator.MaxCharacters)throw new InvalidDataException("Workspace exceeds 16 MiB.");
         var workspace=JsonSerializer.Deserialize(text,WorkspaceJsonContext.Default.DesignWorkspaceSnapshot)??throw new InvalidDataException("Empty workspace.");
         WorkspaceValidator.Validate(workspace);return workspace;
     }

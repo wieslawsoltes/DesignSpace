@@ -93,12 +93,16 @@ public sealed partial class StoryboardInspectorControl : IWorkspaceDraftEditor
     public DesignerPanelDraft CaptureWorkspaceDraft()
     {
         if(_displayed is null||_workspaceEditor is null)return new();
-        var changed=false;try{changed=_workspaceEditor.CreateUpdated()!=_displayed;}catch{changed=true;}
-        return new(){Values=_workspaceEditor.CaptureFields().Add("Board",_displayed.Id.ToString()),HasChanges=changed,MatchesDesign=ReferenceEquals(_displayed,_timeline.ActiveStoryboard)};
+        var fields=_workspaceEditor.CaptureFields();var changed=fields.Any(p=>_workspaceInitialFields.GetValueOrDefault(p.Key)!=p.Value);
+        return new(){Values=fields.Add("Board",_displayed.Id.ToString()),Originals=_workspaceInitialFields,HasChanges=changed,MatchesDesign=!_workspaceStale&&ReferenceEquals(_displayed,_timeline.ActiveStoryboard)};
     }
     public void RestoreWorkspaceDraft(DesignerPanelDraft? state)
     {
         _displayed=null;_workspaceEditor=null;Refresh();
-        if(state?.HasChanges==true&&_workspaceEditor is not null&&state.Values.GetValueOrDefault("Board")==_displayed?.Id.ToString())_workspaceEditor.RestoreFields(state.Values);
+        if(state?.HasChanges==true&&_workspaceEditor is not null&&state.Values.GetValueOrDefault("Board")==_displayed?.Id.ToString())
+        {
+            _workspaceEditor.RestoreFields(state.Values);_workspaceInitialFields=state.Originals;_workspaceStale=!state.MatchesDesign;
+            if(_workspaceStale)_workspaceEditor.ShowError("This retained timing draft is stale; reselect the storyboard to reload it.");
+        }
     }
 }

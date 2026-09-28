@@ -39,6 +39,7 @@ jobs:
           dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
           dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
           dotnet run --project tests/DesignSpace.Vector.Tests -c Release
+          dotnet run --project tests/DesignSpace.Workspace.Tests -c Release
       - name: Publish real Uno WebAssembly application
         run: dotnet publish src/DesignSpace.App -f net10.0-browserwasm -c Release -p:DesignSpaceTargetFrameworks=net10.0-browserwasm -p:WasmShellWebAppBasePath=/DesignSpace/ -o artifacts/browser
       - name: Stage static site
@@ -57,6 +58,7 @@ jobs:
           mkdir -p artifacts/serve
           ln -s "$PWD/artifacts/site" artifacts/serve/DesignSpace
           python3 -m http.server 4173 --directory artifacts/serve > artifacts/server.log 2>&1 &
+          node tests/browser/workspace.mjs http://127.0.0.1:4173/DesignSpace/
           node tests/browser/workbench.mjs http://127.0.0.1:4173/DesignSpace/
       - name: Pack reusable Uno libraries
         run: |

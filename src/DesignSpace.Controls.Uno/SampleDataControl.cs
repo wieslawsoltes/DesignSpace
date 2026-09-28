@@ -43,7 +43,7 @@ public sealed partial class SampleDataControl : Grid,IDisposable
                 foreach(var id in ids) root=root.Update(id,n=>n.IsLocked ? n : n.Set(n.Type is "Button" or "CheckBox" ? "Content" : "Text","{Binding "+path+"}"));
                 return d with { Root=root };
             });
-            _dirty=false;
+            _dirty=false;Refresh();
         }
         catch(Exception e) { Error?.Invoke(this,e.Message); }
     }

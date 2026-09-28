@@ -2,6 +2,7 @@ using DesignSpace.Docking.Uno;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 namespace DesignSpace.Controls.Uno;
 
@@ -43,13 +44,13 @@ public sealed class DocumentTabsControl : Grid
             var close=new StudioButton("×",()=>CloseRequested?.Invoke(this,item.Id),"Close document "+item.Title){Height=27,Padding=new Thickness(5,3,5,3)};
             row.Children.Add(select);row.Children.Add(close);_tabs.Children.Add(row);_headers[item.Id]=row;
             AutomationProperties.SetHelpText(select,"Select document. Drag to reorder. Right-click for pin and close commands.");
-            select.PointerPressed+=(_,e)=>{if(e.GetCurrentPoint(this).Properties.IsLeftButtonPressed){_drag=item.Id;_down=e.GetCurrentPoint(this).Position;_dragging=false;}};
-            select.PointerMoved+=(_,e)=>
+            select.AddHandler(UIElement.PointerPressedEvent,new PointerEventHandler((_,e)=>{if(e.GetCurrentPoint(this).Properties.IsLeftButtonPressed){_drag=item.Id;_down=e.GetCurrentPoint(this).Position;_dragging=false;}}),true);
+            select.AddHandler(UIElement.PointerMovedEvent,new PointerEventHandler((_,e)=>
             {
                 if(_drag!=item.Id||!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)return;
                 var point=e.GetCurrentPoint(this).Position;if(Math.Abs(point.X-_down.X)>8){_dragging=true;select.CapturePointer(e.Pointer);}
-            };
-            select.PointerReleased+=(_,e)=>
+            }),true);
+            select.AddHandler(UIElement.PointerReleasedEvent,new PointerEventHandler((_,e)=>
             {
                 if(_drag!=item.Id)return;_drag=null;
                 if(!_dragging)return;var point=e.GetCurrentPoint(this).Position;var index=0;
@@ -57,10 +58,10 @@ public sealed class DocumentTabsControl : Grid
                 var original=Array.FindIndex(_items,i=>i.Id==item.Id);if(index>original)index--;
                 select.ReleasePointerCapture(e.Pointer);MoveRequested?.Invoke(this,(item.Id,Math.Clamp(index,0,_items.Length-1)));e.Handled=true;
                 DispatcherQueue.TryEnqueue(()=>_dragging=false);
-            };
-            select.PointerCaptureLost+=(_,_)=>_drag=null;
+            }),true);
+            select.PointerCaptureLost+=(_,_)=>DispatcherQueue.TryEnqueue(()=>{if(_drag==item.Id){_drag=null;_dragging=false;}});
             var menu=new MenuFlyout();
-            void Add(string text,Action action){var command=new MenuFlyoutItem{Text=text};command.Click+=(_,_)=>action();menu.Items.Add(command);}
+            void Add(string text,Action action){var command=new MenuFlyoutItem{Text=text};AutomationProperties.SetName(command,text+" "+item.Title);command.Click+=(_,_)=>action();menu.Items.Add(command);}
             Add(item.Pinned?"Unpin document":"Pin document",()=>PinRequested?.Invoke(this,item.Id));
             Add("Move left",()=>MoveRequested?.Invoke(this,(item.Id,Array.FindIndex(_items,i=>i.Id==item.Id)-1)));
             Add("Move right",()=>MoveRequested?.Invoke(this,(item.Id,Array.FindIndex(_items,i=>i.Id==item.Id)+1)));

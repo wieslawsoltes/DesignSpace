@@ -21,7 +21,7 @@ internal sealed class BrowserDiagnostics : IDisposable
         _timer.Tick+=(_,_)=>Publish();_timer.Start();
 #endif
     }
-    private sealed record ControlBounds(string Name,string Type,double X,double Y,double Width,double Height);
+    private sealed record ControlBounds(string Name,string Type,double X,double Y,double Width,double Height,string? Text=null);
     private void Publish()
     {
 #if __WASM__
@@ -35,11 +35,12 @@ internal sealed class BrowserDiagnostics : IDisposable
                 if(obj is FrameworkElement element&&element.ActualWidth>0&&element.ActualHeight>0)
                 {
                     var name=AutomationProperties.GetName(element);
-                    if(!string.IsNullOrEmpty(name)){var p=element.TransformToVisual(_view).TransformPoint(new Point(0,0));controls.Add(new(name,element.GetType().Name,p.X,p.Y,element.ActualWidth,element.ActualHeight));}
+                    if(!string.IsNullOrEmpty(name)){var p=element.TransformToVisual(_view).TransformPoint(new Point(0,0));controls.Add(new(name,element.GetType().Name,p.X,p.Y,element.ActualWidth,element.ActualHeight,element is Microsoft.UI.Xaml.Controls.TextBox input ? input.Text : null));}
                 }
                 for(var i=0;i<VisualTreeHelper.GetChildrenCount(obj);i++)Walk(VisualTreeHelper.GetChild(obj,i));
             }
-            Walk(_view);if(_view.DocumentDialog is { } dialog)Walk(dialog);
+            Walk(_view);
+            if(_view.XamlRoot is not null)foreach(var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(_view.XamlRoot))if(popup.Child is { } content)Walk(content);
             var snapshot=new
             {
                 workspace=new{active=_view.Workspace.ActiveDocumentId,profile=_view.WorkspaceProfile,orientation=_view.SplitOrientation,timelineHeight=_view.TimelineHeight,busy=_view.DocumentOperationPending,documents=_view.Workspace.Documents.Select(d=>new{id=d.Id,name=d.FileName,title=Path.GetFileNameWithoutExtension(d.FileName)+".xaml",dirty=d.IsDirty,pinned=d.IsPinned,sourceDraft=d.Editor.SourceDraft,nodes=d.Document.Root.DescendantsAndSelf().Count()}).ToArray()},
