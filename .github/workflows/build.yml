@@ -29,6 +29,12 @@ jobs:
         run: dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
       - name: Verify vector geometry, editing and pixel fidelity
         run: dotnet run --project tests/DesignSpace.Vector.Tests -c Release
+      - name: Verify multi-document workspace
+        run: dotnet run --project tests/DesignSpace.Workspace.Tests -c Release
+      - name: Verify trimmed workspace persistence
+        run: |
+          dotnet publish tests/DesignSpace.Workspace.Tests -c Release -r linux-x64 --self-contained true -p:PublishTrimmed=true -o artifacts/trimmed-workspace
+          artifacts/trimmed-workspace/DesignSpace.Workspace.Tests
       - name: Verify trimmed persistence without reflection
         run: |
           dotnet publish tests/DesignSpace.Compatibility.Tests -c Release -r linux-x64 --self-contained true -p:PublishTrimmed=true -o artifacts/trimmed-tests

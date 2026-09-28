@@ -82,6 +82,8 @@ public sealed class DockWorkspace : Grid
     public DockLayout Capture()=>new(_leftWidth.Width.Value,_rightWidth.Width.Value,_topHeight.Height.Value,_hidden.ToArray());
     public void Apply(DockLayout layout)
     {
+        if(!double.IsFinite(layout.LeftWidth)||!double.IsFinite(layout.RightWidth)||!double.IsFinite(layout.TopHeight))throw new ArgumentException("Pane dimensions must be finite.");
+        var hidden=(layout.Hidden??[]).ToHashSet();foreach(var id in _panes.Keys){if(hidden.Contains(id))Hide(id);else Show(id);}
         _leftWidth.Width=new GridLength(Math.Clamp(layout.LeftWidth,180,520)); _rightWidth.Width=new GridLength(Math.Clamp(layout.RightWidth,210,520)); _topHeight.Height=new GridLength(Math.Clamp(layout.TopHeight,100,600));
         foreach(var id in layout.Hidden ?? []) Hide(id); Notify();
     }

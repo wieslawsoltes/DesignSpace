@@ -34,7 +34,7 @@ public sealed partial class WorkbenchView
         _strokeEditor.OutlineRequested+=(_,_)=>StrokeCommands.Outline(Session,Designer.Layout);
         _rightTabs.Add("Stroke",_strokeEditor);
         _layoutAuthoring=new(Session);_layoutAuthoring.Error+=(_,error)=>SetStatus(error,true);_leftTabs.Add("Layout",_layoutAuthoring);
-        var toolbar=Children.OfType<StackPanel>().FirstOrDefault(p=>GetRow(p)==2);
+        var toolbar=_mainToolbar;
         if(toolbar is not null)
         {
             toolbar.Children.Add(new StudioButton("Stroke",()=>_rightTabs.Select("Stroke"),"Open Stroke panel"));
@@ -56,7 +56,9 @@ public sealed partial class WorkbenchView
     public async Task ImportImageAsync()
     {
         if(_platform is not IWorkbenchAssetPlatform assets)throw new InvalidOperationException("The host has not supplied an image picker.");
+        var context=Workspace.CaptureOperation();
         var asset=await assets.OpenImageAsync();if(asset is null)return;
+        Workspace.RequireCurrent(context);
         var source=EmbeddedImages.CreateSource(asset.Bytes,asset.MimeType);
         using var cache=new EmbeddedImages();var image=cache.Get(source,out var error);if(image is null)throw new InvalidOperationException(error);
         var scale=Math.Min(1,480d/Math.Max(image.Width,image.Height));

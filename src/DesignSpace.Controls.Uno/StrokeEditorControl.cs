@@ -28,7 +28,7 @@ public sealed class StrokePreviewControl : SKCanvasElement
 }
 
 /// <summary>Draft-safe atomic stroke authoring, independently composable around a DesignSession.</summary>
-public sealed class StrokeEditorControl : Grid,IDisposable
+public sealed partial class StrokeEditorControl : Grid,IDisposable
 {
     private const string Mixed="<multiple>";
     private readonly DesignSession _session;
@@ -41,6 +41,7 @@ public sealed class StrokeEditorControl : Grid,IDisposable
     private ImmutableHashSet<Guid> _targets=[];
     private long _revision;
     private bool _syncing,_dirty,_applying;
+    private ImmutableHashSet<Guid>? _restoreTargets;
     public Func<bool>? CanEditBase { get; set; }
     public event EventHandler? OutlineRequested;
     public event EventHandler<string>? Error;
@@ -54,11 +55,12 @@ public sealed class StrokeEditorControl : Grid,IDisposable
     private void Changed(object? sender,EventArgs e){if(!_applying)Refresh();}
     private void Refresh(bool discard=false)
     {
+        if(discard)_workspaceOrphan=null;
         if(_dirty&&!discard){_status.Text="Draft retained. Apply only to its original revision, or Reload.";return;}
         _syncing=true;
         try
         {
-            _body.Children.Clear();_values.Clear();_setters.Clear();_original.Clear();_targets=_session.Selection;_revision=_session.Revision;_dirty=false;
+            _body.Children.Clear();_values.Clear();_setters.Clear();_original.Clear();_targets=_restoreTargets ?? _session.Selection;_revision=_session.Revision;_dirty=false;
             _status.Text="Base stroke values";_status.TextWrapping=TextWrapping.Wrap;_body.Children.Add(_status);
             var nodes=_targets.Select(_session.Index.Find).OfType<DesignNode>().ToArray();
             if(nodes.Length==0||nodes.Any(n=>!VectorGeometry.IsShape(n))){_body.Children.Add(StudioTheme.Text("Select vector shapes to edit their strokes."));return;}

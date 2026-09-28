@@ -24,14 +24,14 @@ public sealed partial class WorkbenchView
             }
             button.Flyout=flyout; bar.Children.Add(button);
         }
-        Menu("File",("New design    Ctrl+N",()=>_=GuardAsync(()=>NewAsync())),("Open…    Ctrl+O",()=>_=GuardAsync(OpenAsync)),("Save design…    Ctrl+S",()=>_=GuardAsync(SaveAsync)),("-",()=>{}),("Export XAML…",()=>_=GuardAsync(ExportXamlAsync)),("Export PNG…",()=>_=GuardAsync(ExportPngAsync)));
+        Menu("File",("New design    Ctrl+N",()=>_=GuardAsync(()=>NewAsync())),("Open…    Ctrl+O",()=>_=GuardAsync(OpenAsync)),("Save design…    Ctrl+S",()=>_=GuardAsync(SaveAsync)),("-",()=>{}),("Save all    Ctrl+Shift+S",()=>_=GuardAsync(SaveAllAsync)),("Save workspace…",()=>_=GuardAsync(SaveWorkspaceAsync)),("Close document    Ctrl+F4",()=>_=GuardAsync(()=>CloseDocumentAsync(Workspace.ActiveDocumentId))),("Export XAML…",()=>_=GuardAsync(ExportXamlAsync)),("Export PNG…",()=>_=GuardAsync(ExportPngAsync)));
         Menu("Edit",("Undo    Ctrl+Z",Session.Undo),("Redo    Ctrl+Y",Session.Redo),("-",()=>{}),("Cut    Ctrl+X",()=>_=GuardAsync(CutAsync)),("Copy    Ctrl+C",()=>_=GuardAsync(CopyAsync)),("Paste    Ctrl+V",()=>_=GuardAsync(PasteAsync)),("Duplicate    Ctrl+D",Session.Duplicate),("Delete    Del",Session.Delete),("Select all    Ctrl+A",()=>Session.Select(Session.Document.Root.Children.Select(n=>n.Id))));
         Menu("View",("Design",()=>SetMode("Design")),("Split",()=>SetMode("Split")),("XAML",()=>SetMode("XAML")),("-",()=>{}),("Fit artboard    F",Designer.Fit),("Show / hide grid",()=> { Designer.Viewport.ShowGrid=!Designer.Viewport.ShowGrid; Designer.Invalidate(); }),("Show / hide rulers",()=> { Designer.Viewport.ShowRulers=!Designer.Viewport.ShowRulers; Designer.Invalidate(); }),("Show / hide timeline",ToggleTimeline),("Preview    F5",TogglePreview));
         Menu("Object",("Group into Canvas    Ctrl+G",Session.Group),("Ungroup    Ctrl+Shift+G",Session.Ungroup),("Bring to front",()=>Session.Reorder(true)),("Send to back",()=>Session.Reorder(false)),("-",()=>{}),("Align left",()=>Session.Align("Left")),("Align horizontal centers",()=>Session.Align("Center")),("Align right",()=>Session.Align("Right")),("Align top",()=>Session.Align("Top")),("Align vertical centers",()=>Session.Align("Middle")),("Align bottom",()=>Session.Align("Bottom")));
         Menu("Path",("Convert to Path",()=>Designer.PathCommand("Convert")),("Unite",()=>Designer.PathCommand("Unite")),("Intersect",()=>Designer.PathCommand("Intersect")),("Subtract",()=>Designer.PathCommand("Subtract")),("Exclude overlap",()=>Designer.PathCommand("Exclude")),("Divide",()=>Designer.PathCommand("Divide")),("Make compound path",()=>Designer.PathCommand("Compound")),("Break apart",()=>Designer.PathCommand("Break apart")));
         Menu("Project",("Open XAML document…",()=>_=GuardAsync(OpenAsync)),("Load interaction sample",()=>_=GuardAsync(()=>NewAsync(true))),("Assets",()=>_leftTabs.Select("Assets")),("Sample data",()=>_leftTabs.Select("Data")),("Resources",()=>_rightTabs.Select("Resources")));
         Menu("Tools",("New storyboard",Timeline.AddStoryboard),("Add keyframe",()=>Timeline.AddKey(Timeline.PropertyToRecord)),("Play / pause animation",Timeline.TogglePlay),("Stop animation",()=> { Timeline.Stop(); Designer.ClearPreview(); }),("Visual states",()=>_leftTabs.Select("States")),("Reset to base values",()=> { Timeline.Stop(); States.Select(null); Designer.ClearPreview(); }));
-        Menu("Window",("Assets / Project",()=>_dock.Show("assets")),("Objects and Timeline",()=>_dock.Show("objects")),("Properties / Resources",()=>_dock.Show("properties")),("Float Properties",()=>_dock.ToggleFloat("properties")),("Reset workspace",()=>_dock.Reset()));
+        Menu("Window",("Next document    Ctrl+Tab",()=>CycleDocument(1)),("Previous document    Ctrl+Shift+Tab",()=>CycleDocument(-1)),("Rename document",()=>_=GuardAsync(RenameActiveDocumentAsync)),("Toggle Design / Animation    F6",()=>SetWorkspaceProfile(_workspaceProfile=="Design"?"Animation":"Design")),("Horizontal split",()=>SetSplitOrientation("Horizontal")),("Vertical split",()=>SetSplitOrientation("Vertical")),("Assets / Project",()=>_dock.Show("assets")),("Objects and Timeline",()=>_dock.Show("objects")),("Properties / Resources",()=>_dock.Show("properties")),("Float Properties",()=>_dock.ToggleFloat("properties")),("Reset workspace",()=>_dock.Reset()));
         Menu("Help",("Keyboard shortcuts",()=>_=GuardAsync(()=>ShowInfoAsync("Keyboard shortcuts","V Selection · A Direct Selection · H Hand · Z Zoom\nR Rectangle · E Ellipse · L Line · P Pen · Y Pencil · T Text\nF Fit artboard · F5 Preview · Space+drag Pan\nCtrl+wheel Zoom around pointer · Alt Disable snapping\nShift+resize Preserve aspect ratio\nCtrl+Z / Ctrl+Y Undo / Redo\nCtrl+D Duplicate · Ctrl+G Group · Ctrl+Shift+G Ungroup\nCtrl+C / X / V Copy / Cut / Paste\nArrow keys Move · Shift+arrows Move by 10\nCtrl+Enter Apply the current XAML draft"))),("Compatibility and architecture",()=>_=GuardAsync(()=>ShowInfoAsync("DesignSpace 0.1 preview","Independent Uno Platform XAML designer with eight reusable libraries.\n\nThe artboard previews a documented subset of XAML; it does not execute imported code, arbitrary markup extensions, behaviors or custom assemblies. Grid Auto layout, inherited transforms, typography, controls and gradients are not full WPF/WinUI runtime equivalents.\n\nThe native .designspace format preserves editor identities, states, storyboards and locks. XAML export is a compatibility subset.\n\nNo Microsoft product source, logos or icons are included. Documentation is in the repository."))),("About DesignSpace",()=>_=GuardAsync(()=>ShowInfoAsync("DesignSpace","A modular XAML design environment for desktop and browser.\n\n.NET 10 · Uno Platform 6.7 · Skia rendering\nMIT licensed original source\n\nDesignSpace is not affiliated with or endorsed by Microsoft."))));
         return bar;
     }
@@ -39,6 +39,8 @@ public sealed partial class WorkbenchView
     {
         var bar=new StackPanel { Orientation=Orientation.Horizontal,Spacing=2,Background=StudioTheme.Brush("#333337"),Padding=new Thickness(7,1,7,1) };
         bar.Children.Add(new StudioButton("New",()=>_=GuardAsync(()=>NewAsync()),"New design")); bar.Children.Add(new StudioButton("Open",()=>_=GuardAsync(OpenAsync),"Open design")); bar.Children.Add(new StudioButton("Save",()=>_=GuardAsync(SaveAsync),"Save design"));
+        bar.Children.Add(new StudioButton("Save all",()=>_=GuardAsync(SaveAllAsync),"Save all documents"));
+        bar.Children.Add(new StudioButton("Workspace",()=>_=GuardAsync(SaveWorkspaceAsync),"Save workspace"));
         bar.Children.Add(Separator()); bar.Children.Add(new StudioButton("↶",()=>Guard(Session.Undo),"Undo")); bar.Children.Add(new StudioButton("↷",()=>Guard(Session.Redo),"Redo")); bar.Children.Add(Separator());
         bar.Children.Add(new StudioButton("▶  Preview",TogglePreview,"Preview design")); bar.Children.Add(new StudioButton("■",()=> { Timeline.Stop(); Designer.IsPreview=false; Designer.ClearPreview(); },"Stop preview")); bar.Children.Add(Separator());
         bar.Children.Add(StudioTheme.Text("Artboard",11,"#AEAEB5"));
@@ -48,20 +50,21 @@ public sealed partial class WorkbenchView
             if(devices.SelectedItem is not string value) return; var dimensions=value.Split('×');
             Guard(()=>Session.Execute("Change artboard size",d=>d with { Root=d.Root.Set("Width",DesignSpace.Core.Numbers.Parse(dimensions[0])).Set("Height",DesignSpace.Core.Numbers.Parse(dimensions[1])) })); Designer.Fit();
         };
-        bar.Children.Add(devices); bar.Children.Add(Separator()); bar.Children.Add(new StudioButton("Animation",()=> { if(_timelineHost.Visibility==Visibility.Collapsed) ToggleTimeline(); Timeline.Fit(); },"Animation workspace"));
+        bar.Children.Add(devices); bar.Children.Add(Separator()); bar.Children.Add(new StudioButton("Animation",()=>SetWorkspaceProfile("Animation"),"Animation workspace"));
         return bar;
     }
     private static Border Separator()=>new(){Width=1,Height=17,Background=StudioTheme.Border,Margin=new Thickness(5,3,5,3)};
     private UIElement BuildProject()
     {
-        var project=new StackPanel { Padding=new Thickness(8),Spacing=5 };
-        project.Children.Add(StudioTheme.Text("▾  DesignSpace Workspace",12)); project.Children.Add(StudioTheme.Text("    ▾  Design document",11,"#BABAC2"));
-        project.Children.Add(new StudioButton("        ◇  MainPage.xaml",()=>SetMode("Split"),"Open current XAML document"));
-        project.Children.Add(new StudioButton("Open another document…",()=>_=GuardAsync(OpenAsync)));
-        project.Children.Add(new StudioButton("New blank design",()=>_=GuardAsync(()=>NewAsync())));
-        project.Children.Add(new StudioButton("Load interaction sample",()=>_=GuardAsync(()=>NewAsync(true))));
-        var note=StudioTheme.Text("XAML files and native .designspace documents. The preview does not compile a Visual Studio solution.",11,"#8E8E98"); note.TextWrapping=TextWrapping.Wrap; note.Margin=new Thickness(4,12,4,0); project.Children.Add(note);
-        return new ScrollViewer { Content=project,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled };
+        var project=new StackPanel{Padding=new Thickness(8),Spacing=5};
+        project.Children.Add(StudioTheme.Text("Open documents",12));project.Children.Add(_projectDocuments);
+        project.Children.Add(new StudioButton("Open another document…",()=>_=GuardAsync(OpenAsync),"Project open document"));
+        project.Children.Add(new StudioButton("New blank design",()=>_=GuardAsync(()=>NewAsync()),"Project new document"));
+        project.Children.Add(new StudioButton("Load interaction sample",()=>_=GuardAsync(()=>NewAsync(true)),"Project new sample"));
+        project.Children.Add(new StudioButton("Save workspace…",()=>_=GuardAsync(SaveWorkspaceAsync),"Project save workspace"));
+        var note=StudioTheme.Text("Each tab keeps its own undo history, selection, drafts and view. Workspace files retain documents and drafts, not a compiled Visual Studio solution.",11,"#8E8E98");
+        note.TextWrapping=TextWrapping.Wrap;note.Margin=new Thickness(4,12,4,0);project.Children.Add(note);
+        return new ScrollViewer{Content=project,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};
     }
     private void ToggleTimeline()
     {
@@ -77,7 +80,10 @@ public sealed partial class WorkbenchView
     private void OnKeyDown(object sender,KeyRoutedEventArgs e)
     {
         var control=DesignerKeys.Control; var shift=DesignerKeys.Shift;
-        if(control && e.Key==VirtualKey.S) { _=GuardAsync(SaveAsync); e.Handled=true; return; }
+        if(control && e.Key==VirtualKey.S) { _=GuardAsync(shift?SaveAllAsync:SaveAsync); e.Handled=true; return; }
+        if(control && e.Key==VirtualKey.Tab){Guard(()=>CycleDocument(shift?-1:1));e.Handled=true;return;}
+        if(control && e.Key==VirtualKey.F4){_=GuardAsync(()=>CloseDocumentAsync(Workspace.ActiveDocumentId));e.Handled=true;return;}
+        if(e.Key==VirtualKey.F6){SetWorkspaceProfile(_workspaceProfile=="Design"?"Animation":"Design");e.Handled=true;return;}
         if(control && e.Key==VirtualKey.Enter && _mode!="Design") { Source.Apply(); e.Handled=true; return; }
         var focused=XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot);
         if(focused is TextBox or PasswordBox || e.OriginalSource is TextBox) return;
@@ -122,10 +128,12 @@ public sealed partial class WorkbenchView
         try { await _platform.WriteClipboardAsync(_clipboard); SetStatus("Copied "+ids.Count+" object(s)"); }
         catch { SetStatus("Copied "+ids.Count+" object(s) to the in-app clipboard; system clipboard access was denied."); }
     }
-    private async Task CutAsync() { await CopyAsync(); Session.Delete(); }
+    private async Task CutAsync() { var context=Workspace.CaptureOperation();await CopyAsync();Workspace.RequireCurrent(context);Session.Delete(); }
     private async Task PasteAsync()
     {
+        var context=Workspace.CaptureOperation();
         string? text; try { text=await _platform.ReadClipboardAsync(); } catch { text=_clipboard; }
+        Workspace.RequireCurrent(context);
         if(string.IsNullOrEmpty(text)) text=_clipboard;
         if(!text.StartsWith(ClipboardHeader,StringComparison.Ordinal)) throw new InvalidOperationException("The clipboard does not contain DesignSpace objects. Use Open to import XAML.");
         var copied=NativeDocumentCodec.Read(text[ClipboardHeader.Length..]);
@@ -137,6 +145,7 @@ public sealed partial class WorkbenchView
         }
         var children=copied.Root.Children.Select(Clone).Select(n=>n.Set("Canvas.Left",n.Number("Canvas.Left")+16).Set("Canvas.Top",n.Number("Canvas.Top")+16)).ToImmutableArray();
         var host=Session.Selection.Select(id=>Session.Document.Root.Find(id)).FirstOrDefault(n=>n?.Type=="Canvas") ?? Session.Document.Root.DescendantsAndSelf().FirstOrDefault(n=>n.Type=="Canvas") ?? Session.Document.Root;
+        if(Session.Index.IsLocked(host.Id))throw new InvalidOperationException("Unlock the paste container and its ancestors first.");
         Session.Execute("Paste objects",d=>d with { Root=d.Root.Update(host.Id,n=>n with { Children=n.Children.AddRange(children) }) },children.Select(n=>n.Id));
     }
 }

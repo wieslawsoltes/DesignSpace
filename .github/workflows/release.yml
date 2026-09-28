@@ -41,6 +41,7 @@ jobs:
           dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
           dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
           dotnet run --project tests/DesignSpace.Vector.Tests -c Release
+          dotnet run --project tests/DesignSpace.Workspace.Tests -c Release
       - name: Pack eight independently reusable libraries
         run: |
           for name in Core Engine Animation Xaml Rendering.Skia Docking.Uno Controls.Uno Workbench.Uno; do

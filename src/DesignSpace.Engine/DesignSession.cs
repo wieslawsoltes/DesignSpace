@@ -2,12 +2,12 @@ using System.Collections.Immutable;
 using DesignSpace.Core;
 namespace DesignSpace.Engine;
 
-public sealed class DesignSession
+public sealed partial class DesignSession
 {
-    private sealed record HistoryEntry(string Label,DesignDocument Before,DesignDocument After,ImmutableHashSet<Guid> BeforeSelection,ImmutableHashSet<Guid> AfterSelection);
+    internal sealed record HistoryEntry(string Label,DesignDocument Before,DesignDocument After,ImmutableHashSet<Guid> BeforeSelection,ImmutableHashSet<Guid> AfterSelection);
     private readonly List<HistoryEntry> _undo=[];
     private readonly Stack<HistoryEntry> _redo=[];
-    private DesignDocument _saved;
+    private DesignDocument? _saved;
     public DesignDocument Document { get; private set; }
     public DesignIndex Index=>DesignIndex.For(Document.Root);
     public ImmutableHashSet<Guid> Selection { get; private set; }=[];

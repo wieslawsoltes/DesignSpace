@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><IsPackable>false</IsPackable><JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/DesignSpace.Engine/DesignSpace.Engine.csproj"/><ProjectReference Include="../../src/DesignSpace.Xaml/DesignSpace.Xaml.csproj"/></ItemGroup>
+</Project>

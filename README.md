@@ -19,6 +19,8 @@ Draw editable vector paths with **Pen (P)** and **Pencil (Y)**, then use **Direc
 
 **Stroke** adds draft-safe multi-shape editing of thickness, independent line caps, dash patterns/offset, joins and miter limits. Solid, dash and dot presets share native outline geometry with painting and picking, so visible dash gaps do not select the stroke. Zero-width strokes are absent rather than hairlines. Convert supported solid strokes into editable filled paths with undo. See [stroke authoring and reusable APIs](docs/strokes.md) for limits and integration.
 
+**Document tabs** keep independent undo/redo, selection, viewport, source and supported panel drafts. New/Open add documents; Project lists the open set. Save All, protected close, pin/reorder, horizontal/vertical split views and Design/Animation workspace profiles are implemented. Save a `.designspace-workspace` file to retain all designs and unapplied drafts together. One active workbench/renderer is reused across tabs; in-memory history survives switching but is not serialized. See [workspace usage and host integration](docs/workspaces.md).
+
 XAML drafts are isolated from the current document until explicitly applied. Invalid drafts remain editable, stale revisions are rejected, and named elements retain their identity during source reconciliation. Imported XAML is data: no assemblies or arbitrary markup extensions execute.
 
 Create numeric keyframes for position, size, opacity and rotation. Scrub the original keyframe interval or configure delay, speed, auto-reverse, repeat count/duration/forever and HoldEnd/Stop playback in Timing. Duration changes can proportionally retime keys; shortening without scaling rejects excluded keys instead of dropping them.
@@ -32,7 +34,7 @@ Save native `.designspace` files, export XAML or a 2× PNG, and recover the last
 | Package | Responsibility |
 | --- | --- |
 | `DesignSpace.Core` | Immutable documents, geometry, animation contracts and validation |
-| `DesignSpace.Engine` | Editing transactions, selection, history and design-time layout |
+| `DesignSpace.Engine` | Editing transactions, document workspaces/checkpoints, selection, history and design-time layout |
 | `DesignSpace.Animation` | Deterministic keyframes, clocks, easing and state overlays |
 | `DesignSpace.Xaml` | Inert XAML codec, trim-safe native persistence and JSON sample data |
 | `DesignSpace.Rendering.Skia` | Host-owned canvas rendering, viewport, adorners and PNG export |
@@ -55,7 +57,7 @@ session.Undo();
 string xaml = XamlCodec.Write(session.Document);
 ```
 
-Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
+Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing, Transitions, Paths, Stroke and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
 
 ## Build and run
 
@@ -66,6 +68,7 @@ dotnet run --project tests/DesignSpace.Tests -c Release
 dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
 dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
 dotnet run --project tests/DesignSpace.Vector.Tests -c Release
+dotnet run --project tests/DesignSpace.Workspace.Tests -c Release
 
 # Desktop (install the native prerequisites for the selected Uno host)
 dotnet run --project src/DesignSpace.App -f net10.0-desktop \
@@ -85,7 +88,7 @@ The renderer draws directly into the **host-owned Skia canvas**, sharing Uno's G
 
 The status bar reports **CPU draw-submission duration**, not GPU completion or end-to-end presentation latency. Browser CI uses Chromium with software-backed WebGL/SwiftShader, not physical GPU benchmarks.
 
-`build.yml` runs portable, compatibility and rendering suites, reruns persistence tests in a trimmed executable with reflection serialization disabled, packs portable libraries and compiles desktop targets on Windows, macOS and Linux. `pages.yml` requires the portable regressions and published Uno browser interactions before deployment, preserves screenshots/diagnostics and checks the public commit identity. `release.yml` tests and packs all eight dual-target/portable packages, verifies framework coverage and emits source/checksum artifacts. Source, test and dependency changes exercise full package creation in PRs and on main; only a separate tag-gated publication job can create a preview release. No automatic public NuGet publication occurs.
+`build.yml` runs portable, compatibility, rendering, vector and workspace suites, reruns both document and workspace persistence tests in trimmed executables with reflection serialization disabled, packs portable libraries and compiles desktop targets on Windows, macOS and Linux. `pages.yml` requires the portable regressions and published Uno browser interactions before deployment, preserves screenshots/diagnostics and checks the public commit identity. `release.yml` tests and packs all eight dual-target/portable packages, verifies framework coverage and emits source/checksum artifacts. Source, test and dependency changes exercise full package creation in PRs and on main; only a separate tag-gated publication job can create a preview release. No automatic public NuGet publication occurs.
 
 ## License and attribution
 
