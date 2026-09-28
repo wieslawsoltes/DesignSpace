@@ -9,7 +9,7 @@ public sealed class PathAdornerRenderer : IDisposable
     private readonly SkiaVectorCache _cache=new();
     private readonly SKPaint _line=new(){IsAntialias=true,Style=SKPaintStyle.Stroke,StrokeWidth=1,Color=new SKColor(0,122,204)};
     private readonly SKPaint _fill=new(){IsAntialias=true,Color=SKColors.White};
-    public void Draw(SKCanvas canvas,VectorPath path,DMatrix toWorld,DesignViewport viewport,PathHandle? selected=null,DPoint? hover=null,bool tangents=true)
+    public void Draw(SKCanvas canvas,VectorPath path,DMatrix toWorld,DesignViewport viewport,PathHandle? selected=null,DPoint? hover=null,bool tangents=true,IReadOnlySet<PathHandle>? selectedAnchors=null)
     {
         var toScreen=DMatrix.Translate(viewport.PanX,viewport.PanY)*DMatrix.Scale(viewport.Zoom,viewport.Zoom)*toWorld;
         canvas.DrawPath(_cache.Get(path,toScreen),_line);
@@ -24,7 +24,7 @@ public sealed class PathAdornerRenderer : IDisposable
             if(control&&(!tangents||VectorMath.Length(p-a)<2))continue;
             if(control)canvas.DrawLine((float)a.X,(float)a.Y,(float)p.X,(float)p.Y,_line);
             var rect=SKRect.Create((float)p.X-3.5f,(float)p.Y-3.5f,7,7);if(canvas.QuickReject(rect))continue;
-            _fill.Color=selected==handle ? new SKColor(0,122,204) : SKColors.White;
+            _fill.Color=selected==handle||selectedAnchors?.Contains(handle)==true ? new SKColor(0,122,204) : SKColors.White;
             if(control){canvas.DrawCircle((float)p.X,(float)p.Y,3,_fill);canvas.DrawCircle((float)p.X,(float)p.Y,3,_line);}
             else{canvas.DrawRect(rect,_fill);canvas.DrawRect(rect,_line);}
         }

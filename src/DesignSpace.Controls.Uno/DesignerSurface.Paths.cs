@@ -43,27 +43,29 @@ public sealed partial class DesignerSurface
             var screen=DMatrix.Translate(Viewport.PanX,Viewport.PanY)*DMatrix.Scale(Viewport.Zoom,Viewport.Zoom)*(info?.ToWorld ?? DMatrix.Identity);
             return new
             {
+                selectedAnchors=_anchors.Select(h=>new{figure=h.Figure,segment=h.Segment}).ToArray(),anchorCount=_anchors.Count,
                 draftPoints=DraftPointCount,gesture=_gesture,owner=_pathOwner,selected=_pathHandle?.ToString(),
                 figures=info?.Geometry.Figures.Length ?? 0,segments=info?.Geometry.SegmentCount ?? 0,
-                handles=info is null ? [] : PathEditing.Handles(info.Geometry).Select(h=>new{figure=h.Handle.Figure,segment=h.Handle.Segment,kind=h.Handle.Kind.ToString(),x=screen.Map(h.Point).X,y=screen.Map(h.Point).Y}).ToArray()
+                handles=info is null ? [] : PathEditing.Handles(info.Geometry).Select(h=>new{figure=h.Handle.Figure,segment=h.Handle.Segment,kind=h.Handle.Kind.ToString(),selected=_anchors.Contains(h.Handle)||_pathHandle==h.Handle,x=screen.Map(h.Point).X,y=screen.Map(h.Point).Y}).ToArray()
             };
         }
     }
     private void NotifyPaths(){Invalidate();PathEditingChanged?.Invoke(this,EventArgs.Empty);}
     private void CancelPathDraft()
     {
+        CancelAnchorMarquee();
         _pen.Clear();_pencil.Clear();_penParent=null;_penHover=null;_dragInfo=null;_pathPreview=null;
         if(_gesture.StartsWith("path-",StringComparison.Ordinal)||_gesture is "pen-add" or "pencil")_gesture="";
         NotifyPaths();
     }
     private void PathDocumentChanged()
     {
-        if(!_pathCommitting){CancelPathDraft();_pathHandle=null;_pathSegment=null;}
+        if(!_pathCommitting){CancelPathDraft();ClearAnchorSelection();}
         _editInfo=null;NotifyPaths();
     }
     private void PathSelectionChanged()
     {
-        if(_pathOwner is { } id&&!Session.Selection.Contains(id)){_pathOwner=null;_pathHandle=null;_pathSegment=null;_editInfo=null;}
+        if(_pathOwner is { } id&&(Session.Selection.Count!=1||!Session.Selection.Contains(id))){_pathOwner=null;ClearAnchorSelection();_editInfo=null;}
         NotifyPaths();
     }
     private void DrawPathOverlay(SKCanvas canvas)
@@ -76,7 +78,7 @@ public sealed partial class DesignerSurface
                 var path=_gesture=="pencil" ? new VectorPath([new(_pencil[0],_pencil.Skip(1).Select(VectorSegment.Line).ToImmutableArray())]) : PenGeometry(false,_gesture=="pen-add");
                 _adorners.Draw(canvas,path,_penToWorld,Viewport,null,_penHover,true);return;
             }
-            if(Tool is "Direct Selection" or "Pen" or "Path"&&CurrentPath() is { } info)_adorners.Draw(canvas,info.Geometry,info.ToWorld,Viewport,_pathHandle,null,true);
+            if(Tool is "Direct Selection" or "Pen" or "Path"&&CurrentPath() is { } info)_adorners.Draw(canvas,info.Geometry,info.ToWorld,Viewport,_pathHandle,null,true,_anchors);
         }
         catch(InvalidDataException){ /* Unsupported preserved geometry is diagnosed by the scene renderer. */ }
     }
@@ -104,23 +106,30 @@ public sealed partial class DesignerSurface
                 if(handle is not null||hit is not null)
                 {
                     _pathOwner=info.Node.Id;_pathHandle=handle;_pathSegment=handle is null ? hit : null;
+                    if(handle is null)_anchors=[];
                     if(Tool is "Pen" or "Path")
                     {
                         var next=handle is { Kind:PathHandleKind.Anchor } anchor ? PathEditing.RemoveAnchor(info.Geometry,anchor) : hit is { } segment ? PathEditing.Insert(info.Geometry,segment.Figure,segment.Segment,Math.Clamp(segment.Time,.001,.999)) : info.Geometry;
-                        CommitPath(info,next,Session.Revision,handle is { Kind:PathHandleKind.Anchor } ? "Remove path point" : "Insert path point");_pathHandle=null;NotifyPaths();return true;
+                        CommitPath(info,next,Session.Revision,handle is { Kind:PathHandleKind.Anchor } ? "Remove path point" : "Insert path point");ClearAnchorSelection();NotifyPaths();return true;
                     }
                     if(handle is not null)
                     {
+                        if(!SelectPathHandle(handle.Value)){NotifyPaths();return true;}
                         if(!info.ToWorld.TryInvert(out var inverse))throw new InvalidOperationException("Path transform is not invertible.");
                         _dragInfo=info;_pathPreview=info.Geometry;_pathRevision=Session.Revision;_pathDown=inverse.Map(world);_gesture="path-edit";_surface.CapturePointer(e.Pointer);
                     }
                     NotifyPaths();return true;
                 }
             }
+            if(Tool=="Direct Selection"&&info is not null&&!Session.Index.IsLocked(info.Node.Id))
+            {
+                var under=Layout.HitTest(world);
+                if(DesignerKeys.Shift||under is null||under.Node.Id==info.Node.Id){BeginAnchorMarquee(e,world,info);return true;}
+            }
             if(Tool=="Direct Selection")
             {
                 var hit=Layout.HitStack(world).FirstOrDefault(entry=>Session.Index.Find(entry.Node.Id)?.Type=="Path");
-                if(hit is null)return false;Session.Select(hit.Node.Id);_pathOwner=hit.Node.Id;_pathHandle=null;_pathSegment=null;NotifyPaths();return true;
+                if(hit is null)return false;Session.Select(hit.Node.Id);_pathOwner=hit.Node.Id;ClearAnchorSelection();NotifyPaths();return true;
             }
             if(_penParent is null)
             {
@@ -141,12 +150,12 @@ public sealed partial class DesignerSurface
     {
         try
         {
+            if(MoveAnchorMarquee(world))return true;
             if(_gesture=="path-edit"&&_dragInfo is { } info&&_pathHandle is { } handle)
             {
                 if(Session.Revision!=_pathRevision)throw new InvalidOperationException("The document changed during path editing.");
                 info.ToWorld.TryInvert(out var inv);var point=PathEditing.Position(info.Geometry,handle)+inv.Map(world)-_pathDown;
-                if(handle.Kind==PathHandleKind.Anchor)point=SnapPoint(point);
-                _pathPreview=PathEditing.Move(info.Geometry,handle,point,mirror:!DesignerKeys.Alt);
+                _pathPreview=handle.Kind==PathHandleKind.Anchor ? MoveSelectedAnchors(info,handle,point) : PathEditing.Move(info.Geometry,handle,point,mirror:!DesignerKeys.Alt);
                 _previewRoot=Session.Document.Root.Update(info.Node.Id,n=>VectorGeometry.WithPath(n,_pathPreview));_layout=null;NotifyPaths();return true;
             }
             if(_penParent is not null)
@@ -169,12 +178,13 @@ public sealed partial class DesignerSurface
     }
     private bool PathReleased(string gesture)
     {
+        if(CompleteAnchorMarquee(gesture))return true;
         if(gesture is not ("path-edit" or "pen-add" or "pencil"))return false;
         try
         {
             if(gesture=="path-edit"&&_dragInfo is { } info&&_pathPreview is { } edited)
             {
-                if(!ReferenceEquals(info.Geometry,edited))CommitPath(info,edited,_pathRevision,"Move path "+(_pathHandle?.Kind==PathHandleKind.Anchor ? "point" : "tangent"));
+                if(!ReferenceEquals(info.Geometry,edited))CommitPath(info,edited,_pathRevision,"Move path "+(_pathHandle?.Kind==PathHandleKind.Anchor ? (_anchors.Count>1 ? "points" : "point") : "tangent"));
                 _dragInfo=null;_pathPreview=null;_editInfo=null;
             }
             else if(gesture=="pen-add")
@@ -225,6 +235,8 @@ public sealed partial class DesignerSurface
     }
     public void PathCommand(string command)
     {
+        if(command=="Delete point"&&!_anchors.IsEmpty)command="Delete points";
+        if(HandleAnchorCommand(command))return;
         if(command=="Finish"){FinishPath();return;}if(command=="Cancel"){CancelPathDraft();ClearPreview();return;}
         if(command=="Convert"){PathCommands.Convert(Session,Layout);Tool="Direct Selection";NotifyPaths();return;}
         if(command is "Unite" or "Subtract" or "Intersect" or "Exclude" or "Divide" or "Compound"){PathCommands.Combine(Session,Layout,command);return;}
@@ -245,10 +257,11 @@ public sealed partial class DesignerSurface
             "EvenOdd"=>info.Geometry with { NonZero=false },"Nonzero"=>info.Geometry with { NonZero=true },
             _=>throw new InvalidOperationException("Unknown path command.")
         };
-        CommitPath(info,next,Session.Revision,command+" path");_pathHandle=null;_pathSegment=null;NotifyPaths();
+        CommitPath(info,next,Session.Revision,command+" path");ClearAnchorSelection();NotifyPaths();
     }
     public bool HandlePathKey(VirtualKey key,bool control,bool shift)
     {
+        if(HandleAnchorKey(key,control,shift))return true;
         if(_penParent is not null)
         {
             if(key==VirtualKey.Escape){CancelPathDraft();ClearPreview();return true;}

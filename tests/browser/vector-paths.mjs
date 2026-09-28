@@ -77,4 +77,6 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
     const s=await snapshot();assert.equal(s.nodes.find(n=>n.id===pathId).properties.Data,originalData);assert.equal(s.sourceDirty,false);assert.deepEqual(s.rendering.warnings,[]);
     await page.screenshot({path:directory+'/vector-workspace.png'});
   });
+  const {anchorSelection}=await import('./anchor-selection.mjs');
+  await anchorSelection({page,snapshot,click,check,directory});
 }
