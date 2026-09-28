@@ -46,8 +46,8 @@ public sealed record DesignStoryboard(Guid Id,string Name,double Duration,Immuta
     public string FillBehavior { get; init; }="HoldEnd";
 }
 public sealed record StateSetter(Guid TargetId,string Property,string Value);
-public sealed record DesignState(string Name,ImmutableArray<StateSetter> Setters);
-public sealed record DesignDocument
+public sealed partial record DesignState(string Name,ImmutableArray<StateSetter> Setters);
+public sealed partial record DesignDocument
 {
     public int FormatVersion { get; init; }=1;
     public string Title { get; init; }="MainPage.xaml";
@@ -121,6 +121,7 @@ public static partial class DocumentValidator
                 if(track.Keys.GroupBy(k=>k.Time).Any(g=>g.Count()>1)) throw new InvalidDataException("Duplicate keyframe time.");
             }
         }
+        ValidateStateGroups(doc);
         var stateNames=new HashSet<string>(StringComparer.Ordinal);
         foreach(var state in doc.States)
         {

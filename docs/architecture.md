@@ -146,3 +146,27 @@ var aligned = PathAnchorEditing.Align(moved, points, "Top", DMatrix.Identity);
 The APIs return immutable geometry without committing a session. Batch move/delete use one traversal per affected figure and retain unaffected figure references; distribution additionally sorts selected coordinates. `MoveTo` rejects nonfinite or out-of-budget coordinates before returning a replacement. Shared quadratic controls follow the average of two selected endpoint displacements; cubic controls follow their associated endpoint. Skipped anchors are bridged on deletion, retaining adjacent segments and suitable cubic tangents. A figure with fewer than two survivors is removed.
 
 `DesignerSurface.SelectedPathAnchors` exposes the current read-only point set. Pointer previews use the frozen source geometry and commit through one `DesignSession.Execute` on release. Source revision checks prevent applying a drag over a changed document. Cancelling restores the prior point selection for a marquee and discards preview geometry. Point selection is not serialized or added to document history. A host can use the optional selected-anchor set in `PathAdornerRenderer.Draw` without the complete workbench.
+
+## Concurrent visual-state preview
+
+`DesignState.Group`, `DesignStateGroup` and `DesignTransition` extend the version-1 model without moving existing states out of `DesignDocument.States`. `VisualStateGroups.Get` lists declared groups followed by implicit legacy groups. `StateGroupEditing` exposes pure create/rename/remove operations and transition upsert/removal. Commit them with `DesignSession.Execute` so validation and undo remain atomic.
+
+`VisualStatePreview` in Animation owns no timer or UI. Construct it for a validated immutable document snapshot and supply a monotonic host clock to state changes. A resource resolver is optional; the workbench uses `DesignPreview.Resolve`. Recreate the preview when the document changes, not on each animation frame.
+
+```csharp
+var preview = new VisualStatePreview(session.Document, DesignPreview.Resolve);
+preview.GoToState("Pressed", time: 0, useTransitions: true);
+DesignState? overlay = preview.Sample(time: 0.15);
+DesignNode root = AnimationEngine.EvaluateLocal(
+    session.Document.Root, null, 0, overlay);
+```
+
+Each group has its own run. Transition matching chooses an exact pair, destination, source, then default rule. The affected property union is compiled once, including parsing numeric/color endpoints and optional style/resource resolution. Intermediate sampling builds only the property overlay; completed/repeated samples reuse it. The host still arranges and renders the effective tree. Conflicting property contributions from different active groups fail before changing preview state.
+
+Interruption samples the current group value before compiling its next run. `GoToBase(group, time)` removes only that group's contribution after returning affected properties to their base values. `Complete` ends active runs without writing frames to history; `Reset` clears every group. These UI-thread preview objects are not concurrent synchronization services.
+
+`StatesControl` exposes `ActiveStates`, `PreviewState`, `TargetState`, `IsTransitioning`, `SetTransitionsEnabled` and `PreviewFrameChanged`. The workbench uses the frame event only for the artboard. Inspector values bind to `TargetState` and are not rebuilt on every sampled frame. `StateTransitionEditorControl` composes the session and States control into an independently embeddable editor with revision-checked drafts. CompositionTarget callbacks are attached only while a transition is running and detached on completion, cancellation or unloading.
+
+`XamlStateCodec` extracts a group only when all of its behavior is representable. It preserves unsupported group XML as a unit. `NativeDocumentCodec` migrates absent new metadata in earlier version-1 files while rejecting explicitly null or invalid metadata. The compatibility executable verifies both regular and trimmed/source-generated persistence.
+
+Reference semantics: [Microsoft VisualTransition](https://learn.microsoft.com/en-us/uwp/api/windows.ui.xaml.visualtransition) and [WPF VisualTransition](https://learn.microsoft.com/en-us/dotnet/api/system.windows.visualtransition). The implementation deliberately does not claim complete platform runtime equivalence; see the compatibility matrix for explicit-storyboard, trigger, namescope, point-value and color-space boundaries.

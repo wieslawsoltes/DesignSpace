@@ -57,15 +57,9 @@ public sealed partial class WorkbenchView : Grid,IDisposable
         Designer.Error+=(_,message)=>SetStatus(message,true); Outline.Error+=(_,message)=>SetStatus(message,true); Properties.Error+=(_,message)=>SetStatus(message,true); Timeline.Error+=(_,message)=>SetStatus(message,true); States.Error+=(_,message)=>SetStatus(message,true); Resources.Error+=(_,message)=>SetStatus(message,true); Data.Error+=(_,message)=>SetStatus(message,true); Source.Error+=(_,message)=>SetStatus(message,true);
         Properties.PropertyEdited+=(_,edit)=>EditProperty(edit.Property,edit.Value);
         Properties.ActivePropertyChanged+=(_,property)=> { Timeline.PropertyToRecord=property;States.PropertyToReset=property; };
-        Timeline.TimeChanged+=(_,_)=> { Designer.SetPreview(Timeline.PreviewStoryboard,Timeline.PreviewTime,States.SelectedState); Changed?.Invoke(this,EventArgs.Empty); };
-        States.StatePreviewRequested+=(_,state)=>
-        {
-            Timeline.Stop(); Designer.SetPreview(null,0,state);
-            Properties.ValueOverride=state is null ? null : (node,key)=>States.SelectedState?.Setters.FirstOrDefault(s=>s.TargetId==node.Id && s.Property==key)?.Value;
-            Properties.EditingContext=state is null ? "" : (States.IsRecording ? "Recording state: " : "Preview state: ")+state.Name;
-            Properties.AllowInlineBrushEditing=!States.IsRecording;Properties.Refresh();
-            SetStatus(state is null ? "Base values" : (States.IsRecording ? "Recording properties in state: " : "Previewing visual state: ")+state.Name);
-        };
+        Timeline.TimeChanged+=OnTimelinePreview;
+        States.StatePreviewRequested+=OnStateSelection;
+        States.PreviewFrameChanged+=OnStateFrame;
         Designer.PreviewClicked+=(_,id)=> { var n=Session.Document.Root.Find(id); if(n?.Type=="Button") { Timeline.Stop(); Timeline.TogglePlay(); } };
         Designer.ViewChanged+=(_,_)=> { UpdateZoom(); Changed?.Invoke(this,EventArgs.Empty); };
         Designer.Rendered+=(_,_)=>
@@ -127,9 +121,9 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     private void DocumentChanged(object? sender,EventArgs e)
     {
         UpdateTitle(); Source.Synchronize(Session.Document,Session.Revision); Designer.InvalidateLayout();
-        if(States.SelectedState is { } state) Designer.SetPreview(null,0,state);
-        var context=States.SelectedState is { } selected ? (States.IsRecording ? "Recording state: " : "Preview state: ")+selected.Name : "";
-        if(Properties.EditingContext!=context || Properties.AllowInlineBrushEditing==States.IsRecording)
+        if(States.TargetState is not null) Designer.SetPreview(null,0,States.TargetState);
+        var context=StateEditingContext;
+        if(States.TargetState is not null || Properties.EditingContext!=context || Properties.AllowInlineBrushEditing==States.IsRecording)
         {
             Properties.EditingContext=context;Properties.AllowInlineBrushEditing=!States.IsRecording;Properties.Refresh();
         }
@@ -147,6 +141,7 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     public void Dispose()
     {
         if(_disposed) return; _disposed=true; _saveTimer.Stop(); Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged;
+        Timeline.TimeChanged-=OnTimelinePreview;States.StatePreviewRequested-=OnStateSelection;States.PreviewFrameChanged-=OnStateFrame;
         Designer.Dispose(); Properties.Dispose(); Timeline.Dispose(); Outline.Dispose(); States.Dispose(); Resources.Dispose(); Data.Dispose();
     }
 }

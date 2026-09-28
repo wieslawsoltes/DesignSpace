@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DesignSpace.Core;
 using DesignSpace.Workbench.Uno;
 using DesignSpace.Xaml;
 using Microsoft.UI.Xaml;
@@ -51,7 +52,12 @@ internal sealed class BrowserDiagnostics : IDisposable
                 rendering=new{previewNodes=designer.Layout.Entries.Count,imageDecodes=designer.Renderer.ImageDecodeCount,textShapes=designer.Renderer.TextShapeCount,textCacheHits=designer.Renderer.TextCacheHits,textLayouts=designer.Renderer.TextLayoutCount,textLayoutCacheHits=designer.Renderer.TextLayoutCacheHits,measureCacheHits=designer.MeasureCacheHits,warnings=designer.Renderer.Diagnostics.ToArray(),previewWarnings=DesignPreview.Get(_view.Session.Document.Root).Diagnostics.ToArray()},
                 timeline=new{time=_view.Timeline.Time,previewTime=_view.Timeline.PreviewTime,clockPreview=_view.Timeline.IsClockPreview,playing=_view.Timeline.IsPlaying,recording=_view.Timeline.IsRecording,tracks=_view.Timeline.ActiveStoryboard?.Tracks.Length??0,
                     duration=_view.Timeline.ActiveStoryboard?.Duration,begin=_view.Timeline.ActiveStoryboard?.BeginTime,speed=_view.Timeline.ActiveStoryboard?.SpeedRatio,repeatCount=_view.Timeline.ActiveStoryboard?.RepeatCount,autoReverse=_view.Timeline.ActiveStoryboard?.AutoReverse},
-                states=new{selected=_view.States.SelectedState?.Name,recording=_view.States.IsRecording,items=_view.Session.Document.States.Select(state=>new{name=state.Name,setters=state.Setters.Select(setter=>new{target=setter.TargetId,property=setter.Property,value=setter.Value}).ToArray()}).ToArray()},xaml=_view.Source.Text
+                states=new{selected=_view.States.SelectedState?.Name,recording=_view.States.IsRecording,group=_view.States.SelectedGroup,
+                    transitionsEnabled=_view.States.TransitionsEnabled,transitioning=_view.States.IsTransitioning,progress=_view.States.TransitionProgress,
+                    active=_view.States.ActiveStates.ToDictionary(p=>p.Key,p=>p.Value),
+                    preview=(_view.States.PreviewState?.Setters??[]).Select(s=>new{target=s.TargetId,property=s.Property,value=s.Value}).ToArray(),
+                    groups=VisualStateGroups.Get(_view.Session.Document).Select(g=>new{name=g.Name,rules=g.Transitions.Select(t=>new{from=t.From,to=t.To,duration=t.Duration,easing=t.Easing}).ToArray()}).ToArray(),
+                    items=_view.Session.Document.States.Select(state=>new{name=state.Name,group=state.Group,setters=state.Setters.Select(setter=>new{target=setter.TargetId,property=setter.Property,value=setter.Value}).ToArray()}).ToArray()},xaml=_view.Source.Text
             };
             Uno.Foundation.WebAssemblyRuntime.InvokeJS("globalThis.designSpaceDiagnostics="+JsonSerializer.Serialize(snapshot)+"; 'ready'");
         }

@@ -46,7 +46,7 @@ public static class XamlCodec
             return n with { Children=children.ToImmutable(),PropertyElements=properties.ToImmutable() };
         }
         var root=Read(xml.Root,0); var byName=root.DescendantsAndSelf().GroupBy(n=>n.Name).ToDictionary(g=>g.Key,g=>g.First());
-        var boards=ImmutableArray.CreateBuilder<DesignStoryboard>(); var states=ImmutableArray.CreateBuilder<DesignState>(); var remaining=ImmutableArray.CreateBuilder<string>();
+        var boards=ImmutableArray.CreateBuilder<DesignStoryboard>(); var states=ImmutableArray.CreateBuilder<DesignState>(); var stateGroups=ImmutableArray.CreateBuilder<DesignStateGroup>(); var remaining=ImmutableArray.CreateBuilder<string>();
         foreach(var raw in root.PropertyElements)
         {
             var property=XElement.Parse(raw);
@@ -58,14 +58,16 @@ public static class XamlCodec
                     else diagnostics.Add(new("Warning","Unsupported storyboard preserved as XAML, outside the editable timeline."));
                 }
             }
-            if(property.Name.LocalName=="VisualStateManager.VisualStateGroups") foreach(var group in property.Elements().Where(e=>(string?)e.Attribute(X+"Name")=="DesignSpaceStates").ToArray())
+            if(property.Name.LocalName=="VisualStateManager.VisualStateGroups") foreach(var group in property.Elements().Where(e=>e.Name==Ns+"VisualStateGroup").ToArray())
             {
-                if(XamlAnimationCodec.TryReadStates(group,byName,out var parsed)) { states.AddRange(parsed); group.Remove(); }
+                if(XamlStateCodec.TryReadGroup(group,byName,out var definition,out var parsed) &&
+                   !stateGroups.Any(g=>g.Name==definition!.Name) && !parsed.Any(s=>states.Any(old=>old.Name==s.Name)))
+                { states.AddRange(parsed);stateGroups.Add(definition!);group.Remove(); }
                 else diagnostics.Add(new("Warning","Unsupported state group preserved as XAML."));
             }
             if(property.HasElements || property.Attributes().Any(a=>!a.IsNamespaceDeclaration)) remaining.Add(property.ToString(SaveOptions.DisableFormatting));
         }
-        var document=new DesignDocument { Title=title,Root=root with { PropertyElements=remaining.ToImmutable() },Storyboards=boards.ToImmutable(),States=states.ToImmutable() };
+        var document=new DesignDocument { Title=title,Root=root with { PropertyElements=remaining.ToImmutable() },Storyboards=boards.ToImmutable(),States=states.ToImmutable(),StateGroups=stateGroups.ToImmutable() };
         DocumentValidator.Validate(document); return new(document,diagnostics);
     }
     private static XElement ResourceContainer(XElement property)=>property.Elements().SingleOrDefault(e=>e.Name.LocalName=="ResourceDictionary") ?? property;
@@ -97,12 +99,15 @@ public static class XamlCodec
                 container.Add(XamlAnimationCodec.WriteStoryboard(board,nodes));
             }
         }
-        if(!document.States.IsEmpty)
+        if(!document.States.IsEmpty || !document.StateGroups.IsEmpty)
         {
             var groups=root.Elements().FirstOrDefault(e=>e.Name.LocalName=="VisualStateManager.VisualStateGroups");
             if(groups is null) { groups=new XElement(Ns+"VisualStateManager.VisualStateGroups"); root.AddFirst(groups); }
-            if(groups.Elements().Any(e=>(string?)e.Attribute(X+"Name")=="DesignSpaceStates")) throw new InvalidDataException("Preserved state group name conflict: DesignSpaceStates.");
-            groups.Add(XamlAnimationCodec.WriteStates(document.States,nodes));
+            foreach(var group in VisualStateGroups.Get(document))
+            {
+                if(groups.Elements().Any(e=>(string?)e.Attribute(X+"Name")==group.Name)) throw new InvalidDataException("Preserved state group name conflict: "+group.Name);
+                groups.Add(XamlStateCodec.WriteGroup(group,document.States.Where(s=>s.Group==group.Name),nodes));
+            }
         }
         var settings=new XmlWriterSettings { Indent=true,IndentChars="    ",OmitXmlDeclaration=true,NewLineChars="\n" };
         var buffer=new StringBuilder(); using(var writer=XmlWriter.Create(buffer,settings)) root.WriteTo(writer); return buffer.ToString();
@@ -134,6 +139,22 @@ public static class NativeDocumentCodec
     public static DesignDocument Read(string text)
     {
         if(text.Length>XamlCodec.MaxCharacters) throw new InvalidDataException("Document is too large.");
-        var doc=JsonSerializer.Deserialize(text,NativeDocumentJsonContext.Default.DesignDocument) ?? throw new InvalidDataException("Empty document."); DocumentValidator.Validate(doc); return doc;
+        using var json=JsonDocument.Parse(text,new JsonDocumentOptions { MaxDepth=256 });
+        var doc=json.RootElement.Deserialize(NativeDocumentJsonContext.Default.DesignDocument) ?? throw new InvalidDataException("Empty document.");
+        // Source-generated init-property construction can assign CLR defaults for absent fields.
+        // Migrate only NEW, absent version-1 metadata; explicit nulls remain validation errors.
+        if(!json.RootElement.TryGetProperty("stateGroups",out _))doc=doc with { StateGroups=[] };
+        if(!doc.States.IsDefault && json.RootElement.TryGetProperty("states",out var states) && states.ValueKind==JsonValueKind.Array)
+        {
+            ImmutableArray<DesignState>.Builder? migrated=null;var index=0;
+            foreach(var state in states.EnumerateArray())
+            {
+                if(state.ValueKind==JsonValueKind.Object && !state.TryGetProperty("group",out _) && doc.States[index] is { } value)
+                { migrated ??=doc.States.ToBuilder();migrated[index]=value with { Group=VisualStateGroups.DefaultName }; }
+                index++;
+            }
+            if(migrated is not null)doc=doc with { States=migrated.ToImmutable() };
+        }
+        DocumentValidator.Validate(doc);return doc;
     }
 }
