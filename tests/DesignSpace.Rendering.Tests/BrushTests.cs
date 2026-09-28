@@ -1,0 +1,98 @@
+using System.Collections.Immutable;
+using System.Xml.Linq;
+using DesignSpace.Core;
+using DesignSpace.Engine;
+using DesignSpace.Xaml;
+using DesignSpace.Rendering.Skia;
+using SkiaSharp;
+
+internal static class BrushTests
+{
+    public static (int Passed,int Failed) Run()
+    {
+        var passed=0;var failed=0;
+        void Test(string name,Action run){try{run();passed++;Console.WriteLine("PASS brush: "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL brush: "+name+": "+e);}}
+        void Check(bool condition){if(!condition)throw new Exception("Assertion failed");}
+        void Near(double expected,double actual,double tolerance=.012){if(Math.Abs(expected-actual)>tolerance)throw new Exception($"Expected {expected}, got {actual}");}
+        void Reject(Action run){try{run();}catch{return;}throw new Exception("Expected rejection");}
+        DesignBrush Linear(params DesignGradientStop[] stops)=>new(){Start=new(0,0),End=new(1,0),Stops=stops.Length==0?[new(0,"Black"),new(1,"White")]:stops.ToImmutableArray()};
+        DesignDocument Document(DesignNode child)=>new(){Root=DesignNode.Create("Canvas","Root",0,0,240,180).Set("Background","White") with{Children=[child]}};
+        DesignNode Rectangle()=>DesignNode.Create("Rectangle","Shape",10,10,200,100);
+        SKBitmap Paint(DesignBrush b,int width=200,int height=100)
+        {
+            using var surface=SKSurface.Create(new SKImageInfo(width,height));surface.Canvas.Clear(SKColors.Transparent);using var shader=SkiaBrushShader.Create(b,new(0,0,width,height));using var paint=new SKPaint{Shader=shader};surface.Canvas.DrawRect(0,0,width,height,paint);using var image=surface.Snapshot();return SKBitmap.FromImage(image);
+        }
+        SKBitmap Scene(DesignDocument d,bool preview=false){using var renderer=new DesignRenderer();var root=preview?DesignPreview.Resolve(d.Root):d.Root;var bytes=renderer.ExportPng(new LayoutEngine(renderer).Arrange(root),1);Check(renderer.Diagnostics.Count==0);return SKBitmap.Decode(bytes);}
+        string XML(string body)=>$"<LinearGradientBrush xmlns='{DesignNode.PresentationNamespace}'>{body}</LinearGradientBrush>";
+        Test("solid hexadecimal and named color decoding",()=>{Near(1,BrushColor.Parse("Red").R);Near(0,BrushColor.Parse("Transparent").A);Check(BrushColor.Parse("#804080C0").ToHex()=="#804080C0");Check(BrushColor.Parse("#0F8").ToHex()=="#FF00FF88");});
+        Test("scRGB color endpoints convert to sRGB",()=>Near(.735356,BrushColor.Parse("sc#0.5,0.5,0.5").R));
+        Test("invalid literal color rejected",()=>Reject(()=>BrushCodec.Parse("ImaginaryColor")));
+        Test("solid brush roundtrip",()=>{var b=new DesignBrush{Kind=DesignBrushKind.Solid,Color="#80FF0000",Opacity=.3};var n=BrushCodec.Parse(BrushCodec.Write(b));Check(n.Kind==b.Kind&&n.Color==b.Color&&n.Opacity==b.Opacity);});
+        Test("gradient roundtrip preserves precise coordinates",()=>{var b=Linear() with{Start=new(.123456789,.987654321),Transform=DMatrix.Rotate(27),RelativeTransform=DMatrix.Translate(.1,.2)};var p=BrushCodec.Parse(BrushCodec.Write(b));Check(p.Start==b.Start&&p.Transform==b.Transform&&p.RelativeTransform==b.RelativeTransform&&p.Stops.SequenceEqual(b.Stops));});
+        Test("radial defaults include independent origin",()=>{var b=BrushCodec.Parse("<RadialGradientBrush/>");Check(b.Center==new DPoint(.5,.5)&&b.Origin==new DPoint(.5,.5)&&b.RadiusX==.5&&b.RadiusY==.5);});
+        Test("gradient collection property wrapper",()=>Check(BrushCodec.Parse(XML("<LinearGradientBrush.GradientStops><GradientStop Offset='0' Color='Red'/><GradientStop Offset='1' Color='Blue'/></LinearGradientBrush.GradientStops>")).Stops.Length==2));
+        Test("unsupported metadata not silently dropped",()=>Reject(()=>BrushCodec.Parse("<LinearGradientBrush Unknown='42'/>")));
+        Test("unresolved stop colors rejected",()=>Reject(()=>BrushCodec.Parse(XML("<GradientStop Color='{Binding Accent}'/>"))));
+        Test("nonfinite offsets rejected",()=>Reject(()=>BrushCodec.Parse(XML("<GradientStop Offset='NaN' Color='Red'/>"))));
+        Test("unknown spread mode rejected",()=>Reject(()=>BrushCodec.Parse("<LinearGradientBrush SpreadMethod='Bounce'/>")));
+        Test("wrong enum numeric alias rejected",()=>Reject(()=>BrushCodec.Parse("<LinearGradientBrush MappingMode='0'/>")));
+        Test("negative radius rejected",()=>Reject(()=>BrushCodec.Parse("<RadialGradientBrush RadiusY='-1'/>")));
+        Test("invalid opacity rejected",()=>Reject(()=>BrushCodec.Parse("<SolidColorBrush Color='Red' Opacity='2'/>")));
+        Test("all-zero singular transform is retained as data",()=>Check(BrushCodec.Parse("<LinearGradientBrush Transform='0,0,0,0,0,0'/>").Transform==DMatrix.Scale(0,0)));
+        Test("external entities prohibited",()=>Reject(()=>BrushCodec.Parse("<!DOCTYPE x [<!ENTITY value SYSTEM 'file:///etc/passwd'>]><SolidColorBrush Color='&value;'/>" ) ));
+        Test("overlong input rejected",()=>Reject(()=>BrushCodec.Parse(new string(' ',BrushCodec.MaxCharacters)+"<LinearGradientBrush/>")));
+        Test("stop budget enforced",()=>Reject(()=>BrushCodec.Parse(XML(string.Concat(Enumerable.Repeat("<GradientStop Color='Red'/>",129))))));
+        Test("unsupported interpolation retained rather than misrepresented",()=>Reject(()=>BrushCodec.Parse("<LinearGradientBrush ColorInterpolationMode='ScRgbLinearInterpolation'/>")));
+        Test("transform declaration order",()=>{var b=BrushCodec.Parse(XML("<LinearGradientBrush.Transform><TransformGroup><ScaleTransform ScaleX='2'/><TranslateTransform X='10'/></TransformGroup></LinearGradientBrush.Transform>"));Near(12,b.Transform.Map(new(1,0)).X);});
+        Test("relative transform precedes absolute transform",()=>{var b=Linear() with{RelativeTransform=DMatrix.Translate(.25,0),Transform=DMatrix.Translate(10,0)};Near(60,b.MappingTo(new(0,0,200,100)).Map(new(0,0)).X);});
+        Test("absolute mapping still supports relative transforms",()=>{var b=Linear() with{Mapping=DesignBrushMapping.Absolute,RelativeTransform=DMatrix.Translate(.25,0)};Near(65,b.MappingTo(new(10,20,200,100)).Map(new(5,0)).X);});
+        Test("unsupported transform cannot silently become identity",()=>Reject(()=>BrushCodec.Parse(XML("<LinearGradientBrush.Transform><CustomTransform/></LinearGradientBrush.Transform>"))));
+        Test("duplicate transforms rejected",()=>Reject(()=>BrushCodec.Parse("<LinearGradientBrush Transform='Identity'><LinearGradientBrush.Transform><RotateTransform/></LinearGradientBrush.Transform></LinearGradientBrush>")));
+        Test("stop sampling interpolates outside supplied stop range",()=>Near(.5,BrushEditing.Sample(Linear(new(-1,"Black"),new(1,"White")),0).R));
+        Test("duplicate offset is a hard edge",()=>{var b=Linear(new(0,"Black"),new(.5,"Black"),new(.5,"White"),new(1,"White"));Near(0,BrushEditing.Sample(b,.49).R);Near(1,BrushEditing.Sample(b,.5).R);});
+        Test("adding a stop samples the existing gradient",()=>{var b=BrushEditing.AddStop(Linear(),.5);Check(b.Stops.Length==3);Near(.5,BrushColor.Parse(b.Stops[2].Color).R);});
+        Test("reverse retains duplicate-edge ordering",()=>{var b=Linear(new(0,"Red"),new(.5,"Red"),new(.5,"Blue"),new(1,"Blue"));var r=BrushEditing.Reverse(b);Check(r.Stops[0].Color=="Blue"&&r.Stops[1].Color=="Blue"&&r.Stops[2].Color=="Red");});
+        Test("remove last stop yields transparent empty gradient",()=>Check(BrushEditing.RemoveStop(Linear(new(0,"Red")),0).Stops.IsEmpty));
+        Test("atomic brush edit respects inherited locks",()=>{var d=Document(Rectangle());d=d with{Root=d.Root with{IsLocked=true}};Reject(()=>BrushEditing.Apply(d,[d.Root.Children[0].Id],"Fill",Linear()));});
+        Test("brush edit changes only named property elements",()=>{var n=Rectangle() with{PropertyElements=[$"<Rectangle.Fill xmlns='{DesignNode.PresentationNamespace}'><SolidColorBrush Color='Red'/></Rectangle.Fill>",$"<Rectangle.Stroke xmlns='{DesignNode.PresentationNamespace}'><SolidColorBrush Color='Blue'/></Rectangle.Stroke>"]};var d=BrushEditing.Apply(Document(n),[n.Id],"Fill",Linear());Check(d.Root.Children[0].PropertyElements.Any(e=>XElement.Parse(e).Descendants().Any(c=>(string?)c.Attribute("Color")=="Blue")));Check(d.Root.Children[0].PropertyElements.Length==2);});
+        Test("same brush application creates no history",()=>{var n=Rectangle();var d=BrushEditing.Apply(Document(n),[n.Id],"Fill",Linear());Check(ReferenceEquals(d,BrushEditing.Apply(d,[n.Id],"Fill",Linear())));});
+        Test("multi-selection transaction and undo",()=>{var a=Rectangle();var b=DesignNode.Create("Rectangle","Other",0,0,40,40);var d=Document(a);d=d with{Root=d.Root with{Children=[a,b]}};var s=new DesignSession(d);s.Execute("Brush",doc=>BrushEditing.Apply(doc,[a.Id,b.Id],"Fill",Linear()));Check(s.Revision==1);s.Undo();Check(ReferenceEquals(s.Document,d));});
+        Test("native and XAML persistence preserve brush metadata",()=>{var n=Rectangle();var d=BrushEditing.Apply(Document(n),[n.Id],"Fill",Linear() with{Spread=DesignGradientSpread.Reflect,Opacity=.6});var native=NativeDocumentCodec.Read(NativeDocumentCodec.Write(d));var xaml=XamlCodec.Parse(XamlCodec.Write(d)).Document;foreach(var doc in new[]{native,xaml}){var s=new BrushResolver(doc.Root).Resolve(doc.Root.Children[0].Id,"Fill")!;var brush=BrushCodec.Parse(s);Check(brush.Spread==DesignGradientSpread.Reflect&&brush.Opacity==.6);}});
+        Test("brush null removes both attribute and element",()=>{var n=Rectangle().Set("Fill","Red");var d=BrushEditing.Apply(Document(n),[n.Id],"Fill",null);Check(BrushResolver.LocalSource(d.Root.Children[0],"Fill") is null);});
+        Test("linear gradient pixels interpolate in sRGB",()=>{using var p=Paint(Linear());Near(.5,p.GetPixel(99,50).Red/255d,.02);});
+        Test("relative diagonal endpoints use absolute projection metric",()=>{using var p=Paint(Linear() with{End=new(1,1)});Near((150.5*200+25.5*100)/50000,p.GetPixel(150,25).Red/255d,.02);});
+        Test("outside stops are sampled not clamped to endpoint colors",()=>{using var p=Paint(Linear(new(-1,"Black"),new(1,"White")));Near(.5,p.GetPixel(0,50).Red/255d,.02);});
+        Test("hard-edge pixel retains stable duplicate stops",()=>{using var p=Paint(Linear(new(0,"Black"),new(.5,"Black"),new(.5,"White"),new(1,"White")));Check(p.GetPixel(98,50).Red<10&&p.GetPixel(101,50).Red>245);});
+        Test("brush and stop alpha multiply",()=>{using var p=Paint(Linear(new(0,"#80FF0000"),new(1,"#80FF0000")) with{Opacity=.5});Near(.25,p.GetPixel(50,20).Alpha/255d);});
+        Test("solid brush opacity",()=>{using var p=Paint(new(){Kind=DesignBrushKind.Solid,Color="Blue",Opacity=.25});Near(.25,p.GetPixel(50,20).Alpha/255d);});
+        Test("empty gradient is transparent",()=>{using var p=Paint(Linear() with{Stops=[]});Check(p.GetPixel(50,20).Alpha==0);});
+        Test("single gradient stop is constant",()=>{using var p=Paint(Linear(new(.5,"Red")));Check(p.GetPixel(1,1).Red==255&&p.GetPixel(190,90).Red==255);});
+        Test("coincident linear endpoints use last color",()=>{using var p=Paint(Linear() with{End=new(0,0)});Check(p.GetPixel(50,20).Red==255);});
+        Test("singular brush mapping is transparent",()=>{using var p=Paint(Linear() with{RelativeTransform=DMatrix.Scale(0,1)});Check(p.GetPixel(50,20).Alpha==0);});
+        Test("absolute gradient coordinates",()=>{using var p=Paint(Linear() with{Mapping=DesignBrushMapping.Absolute,Start=new(20,0),End=new(120,0)});Near(.505,p.GetPixel(70,20).Red/255d,.02);});
+        foreach(var spread in Enum.GetValues<DesignGradientSpread>())Test("spread pixels "+spread,()=>{using var p=Paint(Linear() with{End=new(.25,0),Spread=spread});var expected=spread==DesignGradientSpread.Pad?1:spread==DesignGradientSpread.Reflect?.49:.51;Near(expected,p.GetPixel(75,20).Red/255d,.03);});
+        Test("relative translation moves the gradient",()=>{using var p=Paint(Linear() with{RelativeTransform=DMatrix.Translate(.25,0)});Near(.2525,p.GetPixel(100,20).Red/255d,.02);});
+        Test("absolute translation follows relative translation",()=>{using var p=Paint(Linear() with{RelativeTransform=DMatrix.Translate(.25,0),Transform=DMatrix.Translate(20,0)});Near(.1525,p.GetPixel(100,20).Red/255d,.02);});
+        Test("elliptical radial uses separate radii",()=>{var b=Linear() with{Kind=DesignBrushKind.Radial,RadiusX=.5,RadiusY=.25};using var p=Paint(b);Near(.5,p.GetPixel(149,50).Red/255d,.025);Near(.5,p.GetPixel(100,62).Red/255d,.025);Check(p.GetPixel(100,85).Red>245);});
+        Test("radial focus is independent of center",()=>{var b=Linear() with{Kind=DesignBrushKind.Radial,Origin=new(.25,.5)};using var p=Paint(b);Check(p.GetPixel(50,50).Red<10);Check(p.GetPixel(100,50).Red>75);});
+        Test("radial absolute coordinates",()=>{using var p=Paint(Linear() with{Kind=DesignBrushKind.Radial,Mapping=DesignBrushMapping.Absolute,Center=new(60,50),Origin=new(60,50),RadiusX=40,RadiusY=20});Check(p.GetPixel(60,50).Red<12);Near(.5,p.GetPixel(80,50).Red/255d,.035);});
+        Test("zero radius uses terminal color",()=>{using var p=Paint(Linear() with{Kind=DesignBrushKind.Radial,RadiusY=0});Check(p.GetPixel(60,50).Red==255);});
+        Test("shader cache reuses parsed brush and native shader",()=>{using var c=new SkiaBrushCache();var source=BrushCodec.Write(Linear());var a=c.Get(source,new(0,0,100,50));var b=c.Get(source,new(0,0,100,50));Check(ReferenceEquals(a,b)&&c.Parses==1&&c.Builds==1&&c.Hits==1);});
+        Test("solid shaders share across positions and sizes",()=>{using var c=new SkiaBrushCache();var a=c.Get("Red",new(0,0,100,50));var b=c.Get("Red",new(50,70,500,300));Check(ReferenceEquals(a,b)&&c.Builds==1);});
+        Test("size change invalidates only mapped shader",()=>{using var c=new SkiaBrushCache();var s=BrushCodec.Write(Linear());c.Get(s,new(0,0,100,50));c.Get(s,new(0,0,200,50));Check(c.Builds==2&&c.Parses==1);});
+        Test("gradient shader cache budgets survive churn",()=>{using var c=new SkiaBrushCache();for(var i=0;i<350;i++)c.Get(BrushCodec.Write(Linear() with{Opacity=(i+1)/350d}),new(0,0,100,50));Check(c.EstimatedBytes<=6*1024*1024);});
+        Test("root resource brush opacity survives preview",()=>{var n=Rectangle().Set("Fill","{StaticResource Accent}");var d=Document(n);d=d with{Root=d.Root with{PropertyElements=[$"<Canvas.Resources xmlns='{DesignNode.PresentationNamespace}' xmlns:x='{DesignNode.XamlNamespace}'><SolidColorBrush x:Key='Accent' Color='Red' Opacity='0.5'/></Canvas.Resources>"]}};using var p=Scene(d,true);Near(.5,p.GetPixel(50,50).Green/255d,.025);});
+        Test("nested resource keys do not leak into siblings",()=>{var root=XamlCodec.Parse($"<Canvas xmlns='{DesignNode.PresentationNamespace}' xmlns:x='{DesignNode.XamlNamespace}' Width='240' Height='180'><Canvas.Resources><SolidColorBrush x:Key='C' Color='Red'/></Canvas.Resources><Canvas Width='100' Height='100'><Canvas.Resources><SolidColorBrush x:Key='C' Color='Blue'/></Canvas.Resources><Rectangle x:Name='A' Width='40' Height='40' Fill='{{StaticResource C}}'/></Canvas><Rectangle x:Name='B' Canvas.Left='120' Width='40' Height='40' Fill='{{StaticResource C}}'/></Canvas>").Document;using var p=Scene(root);Check(p.GetPixel(20,20).Blue>240&&p.GetPixel(130,20).Red>240);});
+        Test("brush value references resolve at declaration scope",()=>{var d=XamlCodec.Parse($"<Canvas xmlns='{DesignNode.PresentationNamespace}' xmlns:x='{DesignNode.XamlNamespace}' Width='240' Height='180'><Canvas.Resources><Color x:Key='C'>Red</Color><LinearGradientBrush x:Key='G'><GradientStop Color='{{StaticResource C}}'/><GradientStop Color='{{StaticResource C}}' Offset='1'/></LinearGradientBrush></Canvas.Resources><Canvas Width='100' Height='100'><Canvas.Resources><Color x:Key='C'>Blue</Color></Canvas.Resources><Rectangle Width='80' Height='80' Fill='{{StaticResource G}}'/></Canvas></Canvas>").Document;using var p=Scene(d);Check(p.GetPixel(40,40).Red>240&&p.GetPixel(40,40).Blue<10);});
+        Test("missing brush resource is diagnosed",()=>{var n=Rectangle().Set("Fill","{StaticResource Missing}");using var r=new DesignRenderer();r.ExportPng(new LayoutEngine(r).Arrange(Document(n).Root),1);Check(r.Diagnostics.Any(e=>e.Contains("Missing")));});
+        Test("opacity mask covers subtree once",()=>{var child=Rectangle().Set("Fill","Red");var parent=DesignNode.Create("Canvas","Group",0,0,220,150) with{Children=[child]};var d=BrushEditing.Apply(Document(parent),[parent.Id],"OpacityMask",new(){Kind=DesignBrushKind.Solid,Color="Black",Opacity=.5});using var p=Scene(d);Near(.5,p.GetPixel(50,50).Green/255d,.025);});
+        Test("mask uses alpha not luminance",()=>{var n=Rectangle().Set("Fill","Red");var d=BrushEditing.Apply(Document(n),[n.Id],"OpacityMask",Linear(new(0,"Black"),new(1,"White")));using var p=Scene(d);Check(p.GetPixel(20,50).Green<10&&p.GetPixel(190,50).Green<10);});
+        Test("gradient alpha mask fades content",()=>{var n=Rectangle().Set("Fill","Red");var d=BrushEditing.Apply(Document(n),[n.Id],"OpacityMask",Linear(new(0,"#00FFFFFF"),new(1,"#FFFFFFFF")));using var p=Scene(d);Check(p.GetPixel(20,50).Green>220&&p.GetPixel(200,50).Green<25);});
+        Test("nested masks multiply rather than overwrite",()=>{var n=Rectangle().Set("Fill","Red");var parent=DesignNode.Create("Canvas","Group",0,0,220,150) with{Children=[n]};var d=BrushEditing.Apply(Document(parent),[parent.Id,n.Id],"OpacityMask",new(){Kind=DesignBrushKind.Solid,Color="Black",Opacity=.5});using var p=Scene(d);Near(.75,p.GetPixel(50,50).Green/255d,.025);});
+        Test("opacity and mask multiply only once",()=>{var n=Rectangle().Set("Fill","Red").Set("Opacity",.5);var d=BrushEditing.Apply(Document(n),[n.Id],"OpacityMask",new(){Kind=DesignBrushKind.Solid,Color="Black",Opacity=.5});using var p=Scene(d);Near(.75,p.GetPixel(50,50).Green/255d,.025);});
+        Test("opacity mask does not become a hit-test clip",()=>{var n=Rectangle().Set("Fill","Red");var d=BrushEditing.Apply(Document(n),[n.Id],"OpacityMask",new(){Kind=DesignBrushKind.Solid,Color="Transparent"});using var r=new DesignRenderer();Check(new LayoutEngine(r).Arrange(d.Root).HitTest(new(30,30))?.Node.Id==n.Id);});
+        Test("mask survives shader cache eviction inside child subtree",()=>{var children=Enumerable.Range(0,270).Select(i=>DesignNode.Create("Rectangle","R"+i,i%20*10,i/20*10,10,10).Set("Fill",$"#{i%256:X2}0000")).ToImmutableArray();var group=DesignNode.Create("Canvas","Group",0,0,220,150) with{Children=children};var d=BrushEditing.Apply(Document(group),[group.Id],"OpacityMask",new(){Kind=DesignBrushKind.Solid,Color="Black",Opacity=.5});using var p=Scene(d);Check(p.GetPixel(5,5).Green>120);});
+        Test("warm renderer brush repaint performs no shader rebuild",()=>{var n=Rectangle();var d=BrushEditing.Apply(Document(n),[n.Id],"Fill",Linear());using var r=new DesignRenderer();var l=new LayoutEngine(r).Arrange(d.Root);r.ExportPng(l,1);var builds=r.BrushBuildCount;r.ExportPng(l,1);Check(r.BrushBuildCount==builds&&r.BrushCacheHits>0);});
+        return(passed,failed);
+    }
+}

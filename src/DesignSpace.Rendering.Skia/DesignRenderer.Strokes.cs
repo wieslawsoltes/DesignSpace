@@ -61,14 +61,14 @@ public sealed partial class DesignRenderer : IShapeHitTest
             }
             if(hasFill)
             {
-                using var brush=Brush(n,"Fill",brushBounds,_resources);
+                var brush=Brush(n,"Fill",brushBounds);
                 _shapePaint.Color=brush is null ? Color(n.Get("Fill"),SKColors.Transparent) : SKColors.White;
                 _shapePaint.Shader=brush;
                 c.DrawPath(_paths.Get(shape.Path,shape.Mapping),_shapePaint);_shapePaint.Shader=null;
             }
             if(style is { Thickness: > 0 })
             {
-                using var brush=Brush(n,"Stroke",brushBounds,_resources);
+                var brush=Brush(n,"Stroke",brushBounds);
                 _shapePaint.Color=brush is null ? Color(n.Get("Stroke"),SKColors.Transparent) : SKColors.White;
                 _shapePaint.Shader=brush;
                 c.DrawPath(_strokeShapes.Get(shape.Path,shape.Mapping,style),_shapePaint);_shapePaint.Shader=null;

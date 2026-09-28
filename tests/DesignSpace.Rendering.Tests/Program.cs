@@ -78,6 +78,10 @@ Test("layout uses the renderer's styled text metrics",()=>{using var renderer=ne
 Test("repainting avoids rewrapping a warm paragraph",()=>{var n=Node("TextBlock","T",10,10,130,200).Set("Text","A wrapped paragraph rendered more than once.").Set("TextWrapping","Wrap");using var renderer=new DesignRenderer();var layout=new LayoutEngine(renderer).Arrange(Root(n));renderer.ExportPng(layout,1);var count=renderer.TextLayoutCount;renderer.ExportPng(layout,1);Equal(count,renderer.TextLayoutCount);});
 Test("recorded state brush overrides base inline gradient pixels",()=>{var root=Parse("<Rectangle x:Name='R' Width='40' Height='40'><Rectangle.Fill><LinearGradientBrush><GradientStop Offset='0' Color='Blue'/><GradientStop Offset='1' Color='White'/></LinearGradientBrush></Rectangle.Fill></Rectangle>");var id=root.Children[0].Id;var state=new DesignState("Active",[new(id,"Fill","Red")]);using var renderer=new DesignRenderer();var layout=new LayoutEngine(renderer).Arrange(AnimationEngine.EvaluateLocal(root,null,0,state));using var bitmap=SKBitmap.Decode(renderer.ExportPng(layout,1));Check(bitmap.GetPixel(20,20).Red>240&&bitmap.GetPixel(20,20).Blue<10);});
 
+var brushes=BrushTests.Run();passed+=brushes.Passed;failed+=brushes.Failed;
+Directory.CreateDirectory("artifacts/verification");
+File.WriteAllText("artifacts/verification/brush-results.json",JsonSerializer.Serialize(new{brushes.Passed,brushes.Failed}));
+
 var nodes=Enumerable.Range(0,2000).Select(i=>Node("Rectangle","R"+i,i%100*3,i/100*3,2,2)).ToImmutableArray();
 var large=Root() with { Children=nodes };var tracks=nodes.Take(40).Select(n=>new AnimationTrack(n.Id,"Opacity",[new(0,0),new(1,1)])).ToImmutableArray();
 var animation=new DesignStoryboard(Guid.NewGuid(),"Bench",1,tracks);

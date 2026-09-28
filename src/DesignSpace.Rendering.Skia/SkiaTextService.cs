@@ -113,14 +113,16 @@ public sealed class SkiaTextService : IDisposable
         var run=Shape(text,Key(size,family)); if(run.Blob is null) return;
         _paint.Color=color;canvas.DrawText(run.Blob,x,baseline,_paint);
     }
-    public void DrawNode(SKCanvas canvas,DesignNode n,SKRect bounds,SKColor color,bool centered=false)
+    public void DrawNode(SKCanvas canvas,DesignNode n,SKRect bounds,SKColor color,bool centered=false,SKShader? shader=null)
     {
         var size=n.Number("FontSize",n.Type=="TextBlock" ? 14 : 13); var weight=n.Get("FontWeight");
         var key=NodeKey(n);
         var text=n.Get("Text",n.Get("Content",n.TextContent)); var lines=Lines(text,key,bounds.Width,n.Get("TextWrapping")=="Wrap");
         var metrics=Shape("Mg",key); var lineHeight=n.Number("LineHeight",metrics.Height); if(lineHeight<=0) lineHeight=metrics.Height;
         var y=centered ? bounds.MidY-(float)(lines.Length*lineHeight)/2+metrics.Ascent : bounds.Top+metrics.Ascent;
-        var paint=_paint;paint.Color=color;canvas.Save(); canvas.ClipRect(bounds);
+        var paint=_paint;paint.Color=shader is null?color:SKColors.White;paint.Shader=shader;canvas.Save(); canvas.ClipRect(bounds);
+        try
+        {
         foreach(var line in lines)
         {
             var run=Shape(line,key); var alignment=n.Get("TextAlignment",centered ? "Center" : "Left");
@@ -129,7 +131,8 @@ public sealed class SkiaTextService : IDisposable
             if(n.Get("TextDecorations").Contains("Underline",StringComparison.Ordinal)) { paint.StrokeWidth=Math.Max(1,(float)size/16); canvas.DrawLine(x,y+2,x+run.Width,y+2,paint); }
             y+=(float)lineHeight; if(y>bounds.Bottom+lineHeight) break;
         }
-        canvas.Restore();
+        }
+        finally{paint.Shader=null;canvas.Restore();}
     }
     private void ClearRuns()=>_runs.Clear();
     public void Dispose() { ClearRuns();_lines.Clear();_paint.Dispose(); foreach(var font in _fonts.Values) font.Dispose(); _fonts.Clear(); }
