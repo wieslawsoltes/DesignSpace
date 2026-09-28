@@ -61,7 +61,7 @@ public static class VectorPathCodec
     public static void Validate(VectorPath path)
     {
         ArgumentNullException.ThrowIfNull(path);
-        if(path.Figures.IsDefault||path.Figures.Length>MaxSegments||path.SegmentCount>MaxSegments)throw new InvalidDataException("Invalid or excessive path figure/segment count.");
+        if(path.Figures.IsDefault||path.Figures.Length>MaxSegments||path.Figures.Any(f=>f is null||f.Segments.IsDefault)||path.SegmentCount>MaxSegments)throw new InvalidDataException("Invalid or excessive path figure/segment count.");
         static void Point(DPoint p){if(!double.IsFinite(p.X)||!double.IsFinite(p.Y)||Math.Abs(p.X)>MaxCoordinate||Math.Abs(p.Y)>MaxCoordinate)throw new InvalidDataException("Path coordinates must be finite and at most one billion units.");}
         foreach(var f in path.Figures)
         {

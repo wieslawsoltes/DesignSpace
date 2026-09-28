@@ -107,3 +107,25 @@ var preview = AnimationEngine.Evaluate(session.Document.Root, board, 0.7);
 `SkiaTextService` owns reusable paints, font/shaper resources, a glyph-run LRU and a wrapped-line LRU. Keys include text, family/style, size and width as relevant. Entry count and estimated resource-cost budgets bound retention; they do not measure all managed/native allocator overhead. The service and its caches are UI-thread objects, not concurrent collections.
 
 `IStyledTextMetrics` lets a host measure the same font weight/style, wrapping and line-height settings it draws. `DesignRenderer` implements it so the layout engine no longer measures every styled node as plain text. The fallback portable metrics remain approximate. Warm-paragraph and cache-churn regressions check work avoidance, separately from elapsed-time benchmarks.
+
+## Vector geometry and authoring
+
+`VectorPath`, `VectorFigure` and `VectorSegment` are immutable portable Core contracts. `VectorPathCodec` parses finite XAML/SVG-style commands and canonicalizes using invariant round-trip numeric formatting. `VectorMath` computes exact curve extrema, evaluates/subdivides segments and lazily creates bounded hit-test edges. `VectorGeometry` adapts literal and supported object-form XAML geometry without executing markup extensions.
+
+`PathEditing` is an Engine-only library surface: moving anchors/handles, subdivision, point and edge deletion, open/close, line/curve conversion and bounded freehand simplification. The original path stays immutable. Inserting a Bezier point uses de Casteljau subdivision rather than fitting a new curve.
+
+```csharp
+var path = VectorPathCodec.Parse("M0 0 C0 100 100 100 100 0");
+var divided = PathEditing.Insert(path, figureIndex: 0, segmentIndex: 0, time: 0.5);
+var moved = PathEditing.Move(divided,
+    new PathHandle(0, 0, PathHandleKind.Anchor), new DPoint(50, 60));
+string data = VectorPathCodec.Write(moved);
+```
+
+`SkiaVectorGeometry.Create` returns a caller-owned native path; `Combine` returns portable geometry. `PathCommands` composes conversion, native boolean operations and clipping with the session's validation/history. `PathAdornerRenderer` draws fixed-screen-size control points into a caller-owned canvas. `PathToolsControl` and `DesignerSurface` provide the reusable Uno interaction layer.
+
+Pen and Pencil drafts stay outside the document until completed. Direct point manipulation uses a frozen source geometry, transform and revision throughout the gesture, then commits once on release. Cancellation discards the preview. External document changes invalidate drafts instead of overwriting newer work. The read-only diagnostic snapshot reports handle positions relative to the designer surface; browser tests add the surface's page offset before sending pointer input.
+
+The renderer's native path cache keys geometry and transform separately from paint. Pan/zoom of the surrounding scene does not rebuild ordinary scene paths. Bounds requests do not eagerly flatten curves; hit-test tessellation is lazy and weakly cached. All native paths and adorner resources are released when their owning renderer is disposed. These UI-thread caches must not be shared concurrently.
+
+See the compatibility matrix for affine arc approximation, destructive-operation guards and geometry limits. Neither native booleans nor adaptive picking assert bitwise equivalence to Microsoft Blend/WPF geometry processing.

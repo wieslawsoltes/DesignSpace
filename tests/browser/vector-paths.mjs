@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 export async function vectorPaths({page,snapshot,click,check,directory}) {
   const point=async(x,y)=>{const v=(await snapshot()).surface;return{x:v.x+v.panX+x*v.zoom,y:v.y+v.panY+y*v.zoom};};
   async function tap(x,y){const p=await point(x,y);await page.mouse.click(p.x,p.y);await page.waitForTimeout(120);}
-  async function drag(x,y,dx,dy){const a=await point(x,y),b=await point(dx,dy);await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:8});await page.mouse.up();await page.waitForTimeout(180);}
+  async function drag(x,y,dx,dy){const a=await point(x,y),b=await point(dx,dy);await page.mouse.move(a.x,a.y);await page.mouse.down();await page.mouse.move(b.x,b.y,{steps:8});await page.mouse.up();await page.waitForTimeout(300);}
   let pathId,originalData;
   await check('pen draft cancellation leaves history and model unchanged',async()=>{
     const before=await snapshot();await click('Tool Pen (P)');await tap(400,384);await drag(496,336,528,304);
@@ -22,7 +22,8 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
   });
   await check('direct anchor drag previews then commits once and undoes exactly',async()=>{
     await click('Tool Direct Selection (A)');const before=await snapshot();const h=before.paths.handles.find(h=>h.kind==='Anchor'&&h.segment===0);assert.ok(h);
-    await page.mouse.move(h.x,h.y);await page.mouse.down();await page.mouse.move(h.x+24,h.y+16,{steps:12});await page.waitForTimeout(300);
+    const x=h.x+before.surface.x,y=h.y+before.surface.y;
+    await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x+24,y+16,{steps:12});await page.waitForTimeout(300);
     assert.equal((await snapshot()).revision,before.revision);await page.mouse.up();
     await page.waitForFunction(revision=>globalThis.designSpaceDiagnostics.revision===revision+1,before.revision);
     assert.notEqual((await snapshot()).nodes.find(n=>n.id===pathId).properties.Data,originalData);
@@ -30,7 +31,8 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
   });
   await check('direct tangent manipulation changes cubic geometry',async()=>{
     const before=await snapshot();const h=before.paths.handles.find(h=>h.kind==='Control2'&&h.segment===0);assert.ok(h);
-    await page.mouse.move(h.x,h.y);await page.mouse.down();await page.mouse.move(h.x-20,h.y+10,{steps:10});await page.mouse.up();
+    const x=h.x+before.surface.x,y=h.y+before.surface.y;
+    await page.mouse.move(x,y);await page.mouse.down();await page.mouse.move(x-20,y+10,{steps:10});await page.mouse.up();
     await page.waitForFunction(revision=>globalThis.designSpaceDiagnostics.revision===revision+1,before.revision);
     assert.notEqual((await snapshot()).nodes.find(n=>n.id===pathId).properties.Data,originalData);
     await page.screenshot({path:directory+'/direct-path-editing.png'});await click('Undo');

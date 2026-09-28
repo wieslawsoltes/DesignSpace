@@ -41,7 +41,8 @@ public static class VectorMath
     private sealed class Metrics(VectorPath path)
     {
         public DRect Bounds { get; }=ComputeBounds(path);
-        public ImmutableArray<PathEdge> Edges { get; }=Flatten(path,.2);
+        private readonly Lazy<ImmutableArray<PathEdge>> _edges=new(()=>Flatten(path,.2));
+        public ImmutableArray<PathEdge> Edges=>_edges.Value;
     }
     private static readonly ConditionalWeakTable<VectorPath,Metrics> Cache=new();
     public static DPoint Multiply(DPoint point,double scale)=>new(point.X*scale,point.Y*scale);

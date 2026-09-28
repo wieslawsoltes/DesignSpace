@@ -20,7 +20,7 @@ public sealed class DesignerToolIcon : SKCanvasElement
                 using(var path=new SKPath()) { path.MoveTo(5,12); path.LineTo(4,9); path.CubicTo(3,7,5,7,6,9); path.LineTo(8,11); path.LineTo(8,4); path.CubicTo(8,2,10,2,10,4); path.LineTo(10,8); path.LineTo(10,3); path.CubicTo(10,1,12,1,12,3); path.LineTo(12,8); path.LineTo(12,4); path.CubicTo(12,2,14,2,14,4); path.LineTo(14,9); path.LineTo(14,6); path.CubicTo(14,4,16,4,16,6); path.LineTo(16,13); path.CubicTo(16,20,8,21,5,12); path.Close(); c.DrawPath(path,p); } break;
             case "Zoom": c.DrawCircle(9,9,6,p); Line(14,14,19,19); break;
             case "Rectangle": c.DrawRect(4,5,14,12,p); break;
-            case "Ellipse": c.DrawOval(4,4,14,14,p); break;
+            case "Ellipse": c.DrawOval(SKRect.Create(4,4,14,14),p); break;
             case "Line": Line(4,18,18,4); break;
             case "Path": case "Pen":
                 using(var path=new SKPath()) { path.MoveTo(4,17); path.CubicTo(7,0,15,22,18,5); c.DrawPath(path,p); } c.DrawRect(2,15,4,4,p); c.DrawRect(16,3,4,4,p); break;

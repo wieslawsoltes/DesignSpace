@@ -15,7 +15,12 @@ public static class VectorGeometry
     public static VectorPath? ReadClip(DesignNode node)
     {
         var raw=node.PropertyElements.FirstOrDefault(p=>XElement.Parse(p).Name.LocalName.EndsWith(".Clip",StringComparison.Ordinal));
-        if(raw is not null)return Strings.GetValue(raw,s=>new(ReadElement(XElement.Parse(s).Elements().Single()))).Path;
+        if(raw is not null)return Strings.GetValue(raw,s=>
+        {
+            var elements=XElement.Parse(s).Elements().ToArray();
+            if(elements.Length!=1)throw new InvalidDataException("Clip needs exactly one geometry.");
+            return new(ReadElement(elements[0]));
+        }).Path;
         var value=node.Get("Clip");return value.Length==0 ? null : ParseCached(value);
     }
     private static VectorPath Read(DesignNode node)
@@ -28,31 +33,52 @@ public static class VectorGeometry
     }
     private static void Attributes(XElement e,params string[] allowed)
     {
-        if(e.Attributes().Any(a=>!a.IsNamespaceDeclaration&&!allowed.Contains(a.Name.LocalName)))throw new InvalidDataException("Unsupported geometry metadata on "+e.Name.LocalName);
+        if(e.Name.NamespaceName!=DesignNode.PresentationNamespace||e.Attributes().Any(a=>!a.IsNamespaceDeclaration&&(a.Name.NamespaceName.Length>0||!allowed.Contains(a.Name.LocalName))))throw new InvalidDataException("Unsupported geometry metadata on "+e.Name.LocalName);
     }
-    private static DPoint Point(string? text)=>VectorPathCodec.Parse("M "+(text ?? "0,0")).Figures.Single().Start;
+    private static DPoint[] CoordinatePairs(string? text)
+    {
+        if(string.IsNullOrWhiteSpace(text))return [];
+        if(text.Any(c=>char.IsLetter(c)&&c is not ('e' or 'E')))throw new InvalidDataException("A coordinate list cannot contain path commands.");
+        var path=VectorPathCodec.Parse("M "+text);
+        if(path.Figures.Length!=1||path.Figures[0].Closed||path.Figures[0].Segments.Any(s=>s.Kind!=VectorSegmentKind.Line))throw new InvalidDataException("A list of coordinate pairs was expected.");
+        return new[]{path.Figures[0].Start}.Concat(path.Figures[0].Segments.Select(s=>s.End)).ToArray();
+    }
+    private static DPoint Point(string? text)
+    {
+        var points=CoordinatePairs(text ?? "0,0");
+        if(points.Length!=1)throw new InvalidDataException("Exactly one coordinate pair was expected.");
+        return points[0];
+    }
     private static bool Bool(XElement e,string name,bool fallback=false)
     {
         var s=(string?)e.Attribute(name);if(s is null)return fallback;
         return bool.TryParse(s,out var b) ? b : throw new InvalidDataException("Invalid "+name);
     }
-    private static IEnumerable<XElement> Children(XElement e,string wrapper)=>e.Elements().SelectMany(c=>c.Name.LocalName==wrapper ? c.Elements() : [c]);
+    private static IEnumerable<XElement> Children(XElement e,string wrapper)
+    {
+        foreach(var child in e.Elements())
+        {
+            if(child.Name.LocalName==wrapper){Attributes(child);foreach(var item in child.Elements())yield return item;}
+            else yield return child;
+        }
+    }
     public static VectorPath ReadElement(XElement e)
     {
         if(e.Name.NamespaceName!=DesignNode.PresentationNamespace)throw new InvalidDataException("Custom geometry namespaces are not executable.");
-        if(e.Name.LocalName=="StreamGeometry") { Attributes(e);return VectorPathCodec.Parse(e.Value); }
+        if(e.Name.LocalName=="StreamGeometry") { Attributes(e);if(e.HasElements)throw new InvalidDataException("StreamGeometry must contain path text only.");return VectorPathCodec.Parse(e.Value); }
         if(e.Name.LocalName=="RectangleGeometry")
         {
             Attributes(e,"Rect","RadiusX","RadiusY");
-            var rect=VectorPathCodec.Parse("M "+((string?)e.Attribute("Rect") ?? "0,0,0,0")).Figures.Single();
-            if(rect.Segments.Length!=1)throw new InvalidDataException("RectangleGeometry.Rect needs four numbers.");
-            var size=rect.Segments[0].End;if(size.X<0||size.Y<0)throw new InvalidDataException("Rectangle sizes cannot be negative.");
+            if(e.HasElements)throw new InvalidDataException("Nested rectangle geometry properties are not yet editable.");
+            var rect=CoordinatePairs((string?)e.Attribute("Rect") ?? "0,0,0,0");
+            if(rect.Length!=2)throw new InvalidDataException("RectangleGeometry.Rect needs four numbers.");
+            var size=rect[1];if(size.X<0||size.Y<0)throw new InvalidDataException("Rectangle sizes cannot be negative.");
             var node=new DesignNode{Type="Rectangle"}.Set("RadiusX",(string?)e.Attribute("RadiusX") ?? "0").Set("RadiusY",(string?)e.Attribute("RadiusY") ?? "0");
-            return VectorMath.Transform(Local(node,new(size.X,size.Y)),DMatrix.Translate(rect.Start.X,rect.Start.Y));
+            return VectorMath.Transform(Local(node,new(size.X,size.Y)),DMatrix.Translate(rect[0].X,rect[0].Y));
         }
         if(e.Name.LocalName=="EllipseGeometry")
         {
-            Attributes(e,"Center","RadiusX","RadiusY");var center=Point((string?)e.Attribute("Center"));
+            Attributes(e,"Center","RadiusX","RadiusY");if(e.HasElements)throw new InvalidDataException("Nested ellipse geometry properties are not yet editable.");var center=Point((string?)e.Attribute("Center"));
             var rx=Numbers.Parse((string?)e.Attribute("RadiusX"),double.NaN);var ry=Numbers.Parse((string?)e.Attribute("RadiusY"),double.NaN);
             if(!double.IsFinite(rx)||!double.IsFinite(ry)||rx<0||ry<0)throw new InvalidDataException("Invalid ellipse radii.");
             return VectorMath.Transform(Local(new DesignNode{Type="Ellipse"},new(rx*2,ry*2)),DMatrix.Translate(center.X-rx,center.Y-ry));
@@ -72,7 +98,14 @@ public static class VectorGeometry
             var segments=ImmutableArray.CreateBuilder<VectorSegment>();
             foreach(var s in Children(figure,"PathFigure.Segments"))
             {
-                Attributes(s,"Point","Point1","Point2","Point3","Points","Size","RotationAngle","IsLargeArc","SweepDirection","IsStroked","IsSmoothJoin");
+                var allowed=s.Name.LocalName switch
+                {
+                    "LineSegment"=>new[]{"Point"},"BezierSegment"=>new[]{"Point1","Point2","Point3"},"QuadraticBezierSegment"=>new[]{"Point1","Point2"},
+                    "ArcSegment"=>new[]{"Point","Size","RotationAngle","IsLargeArc","SweepDirection"},
+                    "PolyLineSegment" or "PolyBezierSegment" or "PolyQuadraticBezierSegment"=>new[]{"Points"},
+                    _=>throw new InvalidDataException("Unsupported path segment: "+s.Name.LocalName)
+                };
+                Attributes(s,allowed.Concat(new[]{"IsStroked","IsSmoothJoin"}).ToArray());
                 if(!Bool(s,"IsStroked",true)||Bool(s,"IsSmoothJoin"))throw new InvalidDataException("Per-segment stroke/join metadata is not yet editable.");
                 if(s.HasElements)throw new InvalidDataException("Nested segment property markup is not editable.");
                 DPoint P(string key)=>Point((string?)s.Attribute(key));
@@ -84,17 +117,16 @@ public static class VectorGeometry
                     case "ArcSegment":
                         var size=P("Size");var direction=(string?)s.Attribute("SweepDirection") ?? "Counterclockwise";
                         if(direction is not ("Clockwise" or "Counterclockwise" or "CounterClockwise"))throw new InvalidDataException("Invalid sweep direction.");
-                        segments.Add(new(VectorSegmentKind.Arc,P("Point")){Radius=new(size.X,size.Y),Angle=Numbers.Parse((string?)s.Attribute("RotationAngle")),LargeArc=Bool(s,"IsLargeArc"),Clockwise=direction=="Clockwise"});break;
+                        segments.Add(new(VectorSegmentKind.Arc,P("Point")){Radius=new(size.X,size.Y),Angle=Numbers.Parse((string?)s.Attribute("RotationAngle") ?? "0",double.NaN),LargeArc=Bool(s,"IsLargeArc"),Clockwise=direction=="Clockwise"});break;
                     case "PolyLineSegment":case "PolyBezierSegment":case "PolyQuadraticBezierSegment":
-                        var points=VectorPathCodec.Parse("M "+((string?)s.Attribute("Points") ?? "")).Figures.Single();
-                        var array=new[]{points.Start}.Concat(points.Segments.Select(segment=>segment.End)).ToArray();
+                        var array=CoordinatePairs((string?)s.Attribute("Points"));
                         var stride=s.Name.LocalName=="PolyBezierSegment" ? 3 : s.Name.LocalName=="PolyQuadraticBezierSegment" ? 2 : 1;
                         if(array.Length%stride!=0)throw new InvalidDataException("Incomplete poly segment point group.");
                         for(var i=0;i<array.Length;i+=stride)segments.Add(stride==3 ? VectorSegment.Cubic(array[i],array[i+1],array[i+2]) : stride==2 ? new(VectorSegmentKind.Quadratic,array[i+1]){Control1=array[i]} : VectorSegment.Line(array[i]));break;
                     default:throw new InvalidDataException("Unsupported path segment: "+s.Name.LocalName);
                 }
             }
-            result.Add(new(Point((string?)figure.Attribute("StartPoint")),segments.ToImmutable(),Bool(figure,"IsClosed")));
+            result.Add(new(Point((string?)figure.Attribute("StartPoint")),segments.ToImmutableArray(),Bool(figure,"IsClosed")));
         }
         var path=new VectorPath(result.ToImmutable(),fill=="Nonzero");VectorPathCodec.Validate(path);return path;
     }
@@ -118,8 +150,8 @@ public static class VectorGeometry
         if(node.Type=="Line")return new([new(new(node.Number("X1"),node.Number("Y1")),[VectorSegment.Line(new(node.Number("X2",width),node.Number("Y2",height)))])]);
         if(node.Type is "Polygon" or "Polyline")
         {
-            var points=node.Get("Points");if(string.IsNullOrWhiteSpace(points))return VectorPath.Empty;
-            var path=VectorPathCodec.Parse("M "+points);return path with { Figures=path.Figures.Select(f=>f with { Closed=node.Type=="Polygon" }).ToImmutableArray() };
+            var points=CoordinatePairs(node.Get("Points"));if(points.Length==0)return VectorPath.Empty;
+            return new([new(points[0],points.Skip(1).Select(VectorSegment.Line).ToImmutableArray(),node.Type=="Polygon")]);
         }
         if(node.Type=="Ellipse")
         {
@@ -135,13 +167,14 @@ public static class VectorGeometry
         }
         throw new InvalidOperationException("Select a rectangle, ellipse, line, polygon, polyline or path.");
     }
-    public static DesignNode WithPath(DesignNode node,VectorPath path)=>node.Set("Data",VectorPathCodec.Write(path)).Set("Stretch","None") with
+    public static DesignNode WithPath(DesignNode node,VectorPath path)
     {
-        Type="Path",Properties=node.Set("Data",VectorPathCodec.Write(path)).Set("Stretch","None").Properties.RemoveRange(new[]{"RadiusX","RadiusY","CornerRadius","X1","Y1","X2","Y2","Points"}),
-        PropertyElements=node.PropertyElements.Select(raw=>XElement.Parse(raw)).Where(e=>!e.Name.LocalName.EndsWith(".Data",StringComparison.Ordinal)).Select(e=>
+        var properties=node.Set("Data",VectorPathCodec.Write(path)).Set("Stretch","None").Properties.RemoveRange(new[]{"RadiusX","RadiusY","CornerRadius","X1","Y1","X2","Y2","Points"});
+        var elements=node.PropertyElements.IsEmpty ? node.PropertyElements : node.PropertyElements.Select(raw=>XElement.Parse(raw)).Where(e=>!e.Name.LocalName.EndsWith(".Data",StringComparison.Ordinal)).Select(e=>
         {
             if(e.Name.LocalName.StartsWith(node.Type+".",StringComparison.Ordinal))e.Name=e.Name.Namespace+("Path"+e.Name.LocalName[node.Type.Length..]);
             return e.ToString(SaveOptions.DisableFormatting);
-        }).ToImmutableArray()
-    };
+        }).ToImmutableArray();
+        return node with { Type="Path",Properties=properties,PropertyElements=elements };
+    }
 }

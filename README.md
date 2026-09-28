@@ -15,6 +15,8 @@ DesignSpace is an independent Blend-style designer built with .NET 10 and Uno Pl
 
 Create controls from Assets or draw shapes on the artboard. Select, move, resize, duplicate, align, reorder and group Canvas siblings. Edit properties with bounded undo/redo. Pan, zoom around the pointer, fit the artboard and use grid snapping. Resize panels, hide/restore them, or float them within the application.
 
+Draw editable vector paths with **Pen (P)** and **Pencil (Y)**, then use **Direct Selection (A)** to move anchors and tangent handles. Insert and delete points, split contours by deleting segments, switch line/curve segments, or convert basic shapes to paths without losing object identity. **Paths** exposes Unite, Intersect, Subtract, Exclude, two-shape Divide, compound paths and geometric clipping. These commands produce editable vector data, not raster snapshots.
+
 XAML drafts are isolated from the current document until explicitly applied. Invalid drafts remain editable, stale revisions are rejected, and named elements retain their identity during source reconciliation. Imported XAML is data: no assemblies or arbitrary markup extensions execute.
 
 Create numeric keyframes for position, size, opacity and rotation. Scrub the original keyframe interval or configure delay, speed, auto-reverse, repeat count/duration/forever and HoldEnd/Stop playback in Timing. Duration changes can proportionally retime keys; shortening without scaling rejects excluded keys instead of dropping them.
@@ -51,7 +53,7 @@ session.Undo();
 string xaml = XamlCodec.Write(session.Document);
 ```
 
-Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
+Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing and Paths and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
 
 ## Build and run
 
@@ -61,6 +63,7 @@ Pinned dependency family: **Uno.Sdk 6.7.30**, Uno 6.7.135, **SkiaSharp 3.119.2**
 dotnet run --project tests/DesignSpace.Tests -c Release
 dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
 dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
+dotnet run --project tests/DesignSpace.Vector.Tests -c Release
 
 # Desktop (install the native prerequisites for the selected Uno host)
 dotnet run --project src/DesignSpace.App -f net10.0-desktop \
@@ -76,7 +79,7 @@ python3 -m http.server 8080 --directory artifacts/site
 
 ## Rendering and verification
 
-The renderer draws directly into the **host-owned Skia canvas**, sharing Uno's GPU-capable backend/fallback rather than uploading a fresh bitmap every frame. It caches fonts, paths, layout snapshots and scene indexes. Weighted least-recently-used caches retain hot glyphs and wrapped lines rather than clearing every run on capacity overflow. Repainting a warm paragraph reuses line layout. Outline property updates retain unchanged item containers and selection. Grid work is bounded by the visible viewport. Edits invalidate rendering; animation uses the composition callback. It is not a separate WebGPU engine.
+The renderer draws directly into the **host-owned Skia canvas**, sharing Uno's GPU-capable backend/fallback rather than uploading a fresh bitmap every frame. It caches fonts, paths, layout snapshots and scene indexes. Native vector paths use a bounded LRU cache; unchanged geometry reuses parsed commands and native paths. Exact bounds are computed without forcing hit-test tessellation. Path rendering and geometric clipping share data with picking, and Stretch does not scale stroke thickness. Weighted least-recently-used caches retain hot glyphs and wrapped lines rather than clearing every run on capacity overflow. Repainting a warm paragraph reuses line layout. Outline property updates retain unchanged item containers and selection. Grid work is bounded by the visible viewport. Edits invalidate rendering; animation uses the composition callback. It is not a separate WebGPU engine.
 
 The status bar reports **CPU draw-submission duration**, not GPU completion or end-to-end presentation latency. Browser CI uses Chromium with software-backed WebGL/SwiftShader, not physical GPU benchmarks.
 
