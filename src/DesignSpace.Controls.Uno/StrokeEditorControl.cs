@@ -80,7 +80,7 @@ public sealed class StrokeEditorControl : Grid,IDisposable
                 }
                 SetColumn(control,1);row.Children.Add(control);_body.Children.Add(row);
             }
-            Field("Brush","Stroke","#FF0078D4");Field("Width","StrokeThickness","1");
+            Field("Brush","Stroke","");Field("Width","StrokeThickness","1");
             Field("Start cap","StrokeStartLineCap","Flat",Enum.GetNames<DesignLineCap>());Field("End cap","StrokeEndLineCap","Flat",Enum.GetNames<DesignLineCap>());
             Field("Dash cap","StrokeDashCap","Flat",Enum.GetNames<DesignLineCap>());Field("Join","StrokeLineJoin","Miter",Enum.GetNames<DesignLineJoin>());
             Field("Miter limit","StrokeMiterLimit","10");Field("Dash array","StrokeDashArray","");Field("Dash offset","StrokeDashOffset","0");

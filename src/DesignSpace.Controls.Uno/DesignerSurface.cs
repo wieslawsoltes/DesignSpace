@@ -214,7 +214,9 @@ public sealed partial class DesignerSurface : Grid,IDisposable
                 if(Viewport.SnapToGrid && !DesignerKeys.Alt) local=local with { X=Numbers.Snap(local.X,Viewport.GridSize),Y=Numbers.Snap(local.Y,Viewport.GridSize),Width=Math.Max(1,Numbers.Snap(local.Width,Viewport.GridSize)),Height=Math.Max(1,Numbers.Snap(local.Height,Viewport.GridSize)) };
                 Session.Add(Tool,local,_drawParent);
             }
-            else if(gesture=="marquee" && _marquee is { } box2)
+            // Empty clicks must keep the precise picker result. A zero-size
+            // marquee intersects a shape's box even inside an unpainted dash gap.
+            else if(gesture=="marquee" && _marquee is { } box2 && Math.Max(box2.Width,box2.Height)*Viewport.Zoom>=3)
                 Session.Select(Layout.Entries.Where(x=>x.Depth>0 && !x.IsEffectivelyLocked && x.IsEffectivelyVisible && Session.Index.Find(x.Node.Id) is not null && box2.Intersects(x.VisualBounds)).Select(x=>x.Node.Id),DesignerKeys.Control);
             else if(gesture is "move" or "resize" && _changes is { Count:>0 } changes)
                 Session.Execute(gesture=="move" ? "Move selection" : "Resize selection",d=>d with { Root=DesignTree.SetProperties(d.Root,changes,replacePropertyElements:true) });

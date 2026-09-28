@@ -21,7 +21,17 @@ public sealed record StrokeStyle(double Thickness=1,DesignLineCap StartCap=Desig
     private static readonly ConditionalWeakTable<StrokeStyle,Pattern> Patterns=new();
     public ImmutableArray<double> Dashes=>Patterns.GetValue(this,s=>new(ParseDashes(s.DashArray))).Values;
     public static StrokeStyle Read(DesignNode node)=>Nodes.GetValue(node,Parse);
-    public static bool HasBrush(DesignNode node,string property)=>node.Get(property).Length>0 || node.PropertyElements.Any(raw=>XElement.Parse(raw).Name.LocalName.EndsWith("."+property,StringComparison.Ordinal));
+    public static bool HasBrush(DesignNode node,string property)
+    {
+        var raw=node.PropertyElements.FirstOrDefault(xml=>XElement.Parse(xml).Name.LocalName.EndsWith("."+property,StringComparison.Ordinal));
+        if(raw is not null)
+        {
+            var child=XElement.Parse(raw).Elements().FirstOrDefault();
+            return child is not null && child.Name!=XName.Get("Null",DesignNode.XamlNamespace);
+        }
+        var value=node.Get(property).Trim();
+        return value.Length>0 && value!="{x:Null}";
+    }
     private static StrokeStyle Parse(DesignNode n)
     {
         foreach(var raw in n.PropertyElements)

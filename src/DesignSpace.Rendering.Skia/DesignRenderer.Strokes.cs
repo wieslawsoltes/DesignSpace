@@ -8,6 +8,8 @@ public sealed partial class DesignRenderer : IShapeHitTest
 {
     private sealed record ShapeGeometry(VectorPath Path,DMatrix Mapping);
     private readonly ConditionalWeakTable<DesignNode,Dictionary<DSize,ShapeGeometry>> _shapeSources=new();
+    private readonly record struct BasicShapeKey(string Type,DSize Size,string A,string B,string C,string D);
+    private readonly ResourceLruCache<BasicShapeKey,VectorPath> _basicShapes=new(256,4*1024*1024);
     private readonly StrokeGeometryCache _strokeShapes=new();
     private readonly SKPaint _shapePaint=new(){IsAntialias=true,Style=SKPaintStyle.Fill};
     public long StrokeBuildCount=>_strokeShapes.Builds;
@@ -17,7 +19,23 @@ public sealed partial class DesignRenderer : IShapeHitTest
     {
         var sizes=_shapeSources.GetOrCreateValue(node);
         if(sizes.TryGetValue(size,out var shape))return shape;
-        var path=node.Type=="Path" ? VectorGeometry.ReadPath(node) : VectorGeometry.Local(node,size);
+        VectorPath path;
+        if(node.Type=="Path")path=VectorGeometry.ReadPath(node);
+        else
+        {
+            var key=node.Type switch
+            {
+                "Rectangle"=>new BasicShapeKey(node.Type,size,node.Get("RadiusX",node.Get("CornerRadius")),node.Get("RadiusY"),"",""),
+                "Line"=>new BasicShapeKey(node.Type,size,node.Get("X1"),node.Get("Y1"),node.Get("X2"),node.Get("Y2")),
+                "Polygon" or "Polyline"=>new BasicShapeKey(node.Type,size,node.Get("Points"),"","",""),
+                _=>new BasicShapeKey(node.Type,size,"","","","")
+            };
+            if(!_basicShapes.TryGetValue(key,out path!))
+            {
+                path=VectorGeometry.Local(node,size);
+                _basicShapes.Add(key,path,256L+path.SegmentCount*128L+(key.A.Length+key.B.Length+key.C.Length+key.D.Length)*2L);
+            }
+        }
         shape=new(path,node.Type=="Path" ? VectorGeometry.Mapping(node,size,path) : DMatrix.Identity);
         if(sizes.Count>=8)sizes.Clear();sizes[size]=shape;return shape;
     }
