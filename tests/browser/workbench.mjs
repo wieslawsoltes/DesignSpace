@@ -28,6 +28,16 @@ try{
     for(let i=0;i<png.data.length;i+=4){const[r,g,b]=png.data.subarray(i,i+3);if(r>240&&g>240&&b>240)white++;if(b>140&&g>60&&r<60)blue++;}
     assert.ok(white>12000,`white pixels: ${white}`);assert.ok(blue>5000,`blue pixels: ${blue}`);
   });
+  await check('command vector icons render without symbol fonts',async()=>{
+    const s=await snapshot(),png=PNG.sync.read(await page.screenshot());
+    for(const name of ['Undo','Redo','Play or pause storyboard','Stop storyboard']){
+      const c=s.controls.find(c=>c.Name===name);assert.ok(c,`Command ${name}`);let ink=0;
+      for(let y=Math.ceil(c.Y+3);y<Math.floor(c.Y+c.Height-3);y++)for(let x=Math.ceil(c.X+3);x<Math.floor(c.X+c.Width-3);x++){
+        const i=(y*png.width+x)*4;if(png.data[i]>175&&png.data[i+1]>175&&png.data[i+2]>175)ink++;
+      }
+      assert.ok(ink>=8,`${name} icon ink: ${ink}`);
+    }
+  });
   const before=await snapshot();
   await check('pointer creates a rectangle',async()=>{
     await click('Tool Rectangle (R)');const v=(await snapshot()).surface;
@@ -63,6 +73,22 @@ try{
     await page.waitForFunction(()=>!!localStorage.getItem('designspace.v1.recovery.json'),null,{timeout:20000});await page.waitForTimeout(1200);const prior=(await snapshot()).nodes.length;
     await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(count=>globalThis.designSpaceDiagnostics?.ready&&globalThis.designSpaceDiagnostics.nodes.length===count,prior,{timeout:180000});const s=await snapshot();assert.ok(s.nodes.some(n=>n.properties.Text==='Ideas, designed in DesignSpace.'));assert.equal(s.sourceDirty,false);
   });
+  await check('storyboard timing authoring scales keys and preserves source',async()=>{
+    await click('Edit storyboard timing');
+    for(const [name,value] of [['Storyboard duration','1'],['Storyboard start delay','0.1'],['Storyboard speed','2'],['Storyboard repeat amount','2']]){
+      await click(name);await page.keyboard.press('Control+A');await page.keyboard.insertText(value);await page.keyboard.press('Tab');
+    }
+    await click('Storyboard auto reverse');await click('Scale storyboard keyframes');await click('Apply storyboard timing');
+    await page.waitForFunction(()=>{const t=globalThis.designSpaceDiagnostics.timeline;return t.duration===1&&t.begin===0.1&&t.speed===2&&t.repeatCount===2&&t.autoReverse;});
+    const s=await snapshot();assert.equal(s.sourceDirty,false);assert.ok(s.xaml.includes('AutoReverse="True"'));assert.ok(s.xaml.includes('RepeatBehavior="2x"'));
+    await page.screenshot({path:directory+'/storyboard-timing.png'});
+  });
+  await check('timed playback reverses and completes without document edits',async()=>{
+    const revision=(await snapshot()).revision;await click('Play or pause storyboard');
+    await page.waitForFunction(()=>{const t=globalThis.designSpaceDiagnostics.timeline;return t.playing&&t.previewTime>0.7&&t.time<0.85;},null,{timeout:15000});
+    await page.waitForFunction(()=>{const t=globalThis.designSpaceDiagnostics.timeline;return !t.playing&&t.clockPreview&&t.previewTime>=2.1;},null,{timeout:15000});
+    const s=await snapshot();assert.ok(s.timeline.time<0.001);assert.equal(s.revision,revision);await click('Stop storyboard');
+  });
   await check('image import embeds and decodes real pixels',async()=>{
     const png=new PNG({width:32,height:24});for(let i=0;i<png.data.length;i+=4){png.data[i]=20;png.data[i+1]=220;png.data[i+2]=40;png.data[i+3]=255;}
     const pending=page.waitForEvent('filechooser',{timeout:20000});await click('Import image');const chooser=await pending;
@@ -83,9 +109,21 @@ try{
     await page.mouse.click(v.x+v.panX+(Number(node.properties['Canvas.Left'])+60)*v.zoom,v.y+v.panY+(Number(node.properties['Canvas.Top'])+20)*v.zoom);
     await page.waitForFunction(name=>globalThis.designSpaceDiagnostics.selection.includes(name),selected);
   });
+  await check('visual-state recording edits overrides not base values',async()=>{
+    const initial=await snapshot();const name=initial.selection[0];const node=initial.nodes.find(n=>n.name===name);assert.ok(node);
+    await click('States');await click('Preview state Pressed');await click('Record visual state properties');await click('Properties');
+    await click('Property Opacity');await page.keyboard.press('Control+A');await page.keyboard.insertText('0.35');await page.keyboard.press('Enter');
+    await page.waitForFunction(id=>globalThis.designSpaceDiagnostics.states.items.find(s=>s.name==='Pressed').setters.some(s=>s.target===id&&s.property==='Opacity'&&s.value==='0.35'),node.id);
+    let s=await snapshot();assert.equal(s.nodes.find(n=>n.id===node.id).properties.Opacity,node.properties.Opacity);assert.equal(s.sourceDirty,false);
+    await click('Reset selected state property');
+    await page.waitForFunction(id=>!globalThis.designSpaceDiagnostics.states.items.find(s=>s.name==='Pressed').setters.some(s=>s.target===id&&s.property==='Opacity'),node.id);
+    await click('Undo');
+    await page.waitForFunction(id=>globalThis.designSpaceDiagnostics.states.items.find(s=>s.name==='Pressed').setters.some(s=>s.target===id&&s.property==='Opacity'),node.id);
+    await page.screenshot({path:directory+'/state-authoring.png'});await click('Preview base state');await click('Assets');
+  });
   await check('template and embedded image survive reload',async()=>{
     await click('Save design');await page.waitForTimeout(1500);await page.reload({waitUntil:'domcontentloaded'});await page.waitForFunction(()=>globalThis.designSpaceDiagnostics?.ready&&globalThis.designSpaceDiagnostics.nodes.some(n=>n.properties.Template),null,{timeout:180000});
-    const s=await snapshot();assert.ok(s.nodes.some(n=>n.type==='Image'));assert.ok(s.rendering.previewNodes>s.nodes.length);assert.equal(s.sourceDirty,false);
+    const s=await snapshot();assert.ok(s.nodes.some(n=>n.type==='Image'));assert.ok(s.rendering.previewNodes>s.nodes.length);assert.equal(s.sourceDirty,false);assert.equal(s.timeline.autoReverse,true);assert.equal(s.timeline.duration,1);assert.ok(s.states.items.find(state=>state.name==='Pressed').setters.some(setter=>setter.property==='Opacity'&&setter.value==='0.35'));
   });
   await check('no application exceptions or renderer diagnostics',async()=>{
     assert.deepEqual(errors,[]);assert.ok(!log.some(s=>s.startsWith('error: [DesignSpace')));const s=await snapshot();assert.deepEqual(s.rendering.warnings,[]);assert.deepEqual(s.rendering.previewWarnings,[]);

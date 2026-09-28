@@ -27,8 +27,8 @@ public sealed class OutlineControl : Grid,IDisposable
     {
         _session=session; RowDefinitions.Add(new(){Height=new GridLength(28)}); RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)}); RowDefinitions.Add(new(){Height=new GridLength(26)});
         _filter.PlaceholderText="Search objects"; _filter.Margin=new Thickness(4,2,4,2); Children.Add(_filter);
-        _list.ItemTemplate=(DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><TextBlock Text='{Binding Caption}' FontSize='11' Foreground='#FFD6D6D6' VerticalAlignment='Center' Margin='0,2,0,2' /></DataTemplate>");
-        _list.ItemContainerStyle=(Style)XamlReader.Load("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='ListViewItem'><Setter Property='MinHeight' Value='24'/><Setter Property='Padding' Value='4,0'/><Setter Property='Margin' Value='0'/></Style>");
+        _list.ItemTemplate=(DataTemplate)XamlReader.Load("<DataTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'><TextBlock Text='{Binding Caption}' FontSize='11' Foreground='#FFD6D6D6' VerticalAlignment='Center' Margin='0' /></DataTemplate>");
+        _list.ItemContainerStyle=(Style)XamlReader.Load("<Style xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' TargetType='ListViewItem'><Setter Property='Height' Value='24'/><Setter Property='MinHeight' Value='24'/><Setter Property='VerticalContentAlignment' Value='Center'/><Setter Property='Padding' Value='4,0'/><Setter Property='Margin' Value='0'/></Style>");
         AutomationProperties.SetName(_list,"Objects and Timeline outline"); SetRow(_list,1); Children.Add(_list);
         var tools=new StackPanel { Orientation=Orientation.Horizontal,Background=StudioTheme.Background };
         tools.Children.Add(new StudioButton("◉",()=>ForSelected(_session.ToggleVisibility),"Toggle selected object visibility"));
@@ -55,11 +55,16 @@ public sealed class OutlineControl : Grid,IDisposable
                 rows.Add(new(){Id=n.Id,Caption=new string(' ',depth*3)+(n.Children.IsEmpty ? "  " : _collapsed.Contains(n.Id) ? "▸ " : "▾ ")+n.Name+"  ["+n.Type+"]"+(n.IsLocked ? "  L" : "")+(!n.Visible ? "  hidden" : "")});
             if(!_collapsed.Contains(n.Id) || filter.Length>0) foreach(var child in n.Children) Walk(child,depth+1);
         }
-        Walk(_session.Document.Root,0); _rows=rows.ToArray(); _updating=true; _list.ItemsSource=_rows; _updating=false; SyncSelection();
+        Walk(_session.Document.Root,0);
+        if(rows.Count==_rows.Length && rows.Select((row,i)=>row.Id==_rows[i].Id && row.Caption==_rows[i].Caption).All(equal=>equal)) { SyncSelection();return; }
+        _rows=rows.ToArray(); _updating=true; _list.ItemsSource=_rows; _updating=false; SyncSelection();
     }
     private void SyncSelection()
     {
-        _updating=true; _list.SelectedItems.Clear(); foreach(var row in _rows.Where(r=>_session.Selection.Contains(r.Id))) _list.SelectedItems.Add(row); _updating=false;
+        _updating=true;
+        foreach(var item in _list.SelectedItems.OfType<OutlineRow>().Where(row=>!_session.Selection.Contains(row.Id)).ToArray()) _list.SelectedItems.Remove(item);
+        foreach(var row in _rows.Where(r=>_session.Selection.Contains(r.Id))) if(!_list.SelectedItems.Contains(row)) _list.SelectedItems.Add(row);
+        _updating=false;
     }
     public void Dispose() { _session.DocumentChanged-=OnDocument; _session.SelectionChanged-=OnSelection; }
 }

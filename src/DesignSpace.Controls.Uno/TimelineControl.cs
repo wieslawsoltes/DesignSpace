@@ -30,11 +30,28 @@ public sealed class TimelineControl : Grid,IDisposable
     private (Guid Target,string Property,double Time)? _key;
     private double? _dragTime;
     public double Time { get; private set; }
+    public double PreviewTime { get; private set; }
+    public bool IsClockPreview { get; private set; }
+    private DesignStoryboard? _scrubSource,_scrubPreview;
+    public DesignStoryboard? PreviewStoryboard
+    {
+        get
+        {
+            var board=ActiveStoryboard;if(IsClockPreview || board is null) return board;
+            if(!ReferenceEquals(board,_scrubSource))
+            {
+                _scrubSource=board;_scrubPreview=board with { Loop=false,AutoReverse=false,BeginTime=0,SpeedRatio=1,RepeatCount=1,RepeatDuration=null,FillBehavior="HoldEnd" };
+            }
+            return _scrubPreview;
+        }
+    }
     public bool IsRecording { get; private set; }
     public bool IsPlaying=>_playing;
     public string PropertyToRecord { get; set; }="Opacity";
     public DesignStoryboard? ActiveStoryboard=>_session.Document.Storyboards.FirstOrDefault(b=>b.Id==_boardId);
     public event EventHandler? TimeChanged;
+    public event EventHandler? SelectedStoryboardChanged;
+    public event EventHandler? SettingsRequested;
     public event EventHandler<string>? Error;
     public TimelineControl(DesignSession session)
     {
@@ -45,9 +62,10 @@ public sealed class TimelineControl : Grid,IDisposable
         toolbar.Children.Add(new StudioButton("|◀",()=>Scrub(0),"Go to first frame")); toolbar.Children.Add(new StudioButton("▶",TogglePlay,"Play or pause storyboard")); toolbar.Children.Add(new StudioButton("■",Stop,"Stop storyboard"));
         toolbar.Children.Add(new StudioButton("◇",()=>AddKey(PropertyToRecord),"Add keyframe at playhead")); toolbar.Children.Add(new StudioButton("−",DeleteKey,"Delete selected keyframe"));
         _timeText.Width=68; toolbar.Children.Add(_timeText); toolbar.Children.Add(_easing);
+        toolbar.Children.Add(new StudioButton("Timing",()=>SettingsRequested?.Invoke(this,EventArgs.Empty),"Edit storyboard timing"));
         toolbar.Children.Add(new StudioButton("Fit",Fit,"Fit timeline")); Children.Add(toolbar);
         _surface=new(this); SetRow(_surface,1); Children.Add(_surface); AutomationProperties.SetName(_surface,"Animation timeline");
-        _boards.SelectionChanged+=(_,_)=> { if(_refreshing) return; var name=_boards.SelectedItem as string; _boardId=_session.Document.Storyboards.FirstOrDefault(b=>b.Name==name)?.Id; _key=null; Scrub(0); };
+        _boards.SelectionChanged+=(_,_)=> { if(_refreshing) return; var name=_boards.SelectedItem as string; _boardId=_session.Document.Storyboards.FirstOrDefault(b=>b.Name==name)?.Id; _key=null; Scrub(0); SelectedStoryboardChanged?.Invoke(this,EventArgs.Empty); };
         _easing.SelectionChanged+=(_,_)=> { if(_refreshing || _key is not { } key || ActiveStoryboard is not { } board) return; var track=board.Tracks.FirstOrDefault(t=>t.TargetId==key.Target && t.Property==key.Property); var k=track?.Keys.FirstOrDefault(k=>Math.Abs(k.Time-key.Time)<.0001); if(k is not null) ReplaceBoard(AnimationEngine.SetKey(board,key.Target,key.Property,key.Time,k.Value,_easing.SelectedItem as string ?? "Linear"),"Change keyframe easing"); };
         _surface.PointerPressed+=(_,e)=>
         {
@@ -61,7 +79,7 @@ public sealed class TimelineControl : Grid,IDisposable
             }
             _dragging=true; Scrub(Math.Max(0,(p.X-150)/_scale)); _surface.CapturePointer(e.Pointer); e.Handled=true;
         };
-        _surface.PointerMoved+=(_,e)=> { if(!_dragging) return; var p=e.GetCurrentPoint(_surface).Position; var time=Math.Round(Math.Clamp((p.X-150)/_scale,0,ActiveStoryboard?.Duration ?? 2)*60)/60; if(_key is not null) _dragTime=time; Scrub(time); };
+        _surface.PointerMoved+=(_,e)=> { if(!_dragging) return; var p=e.GetCurrentPoint(_surface).Position; var time=Math.Clamp(Math.Round(Math.Max(0,(p.X-150)/_scale)*60)/60,0,ActiveStoryboard?.Duration ?? 2); if(_key is not null) _dragTime=time; Scrub(time); };
         _surface.PointerReleased+=(_,e)=>
         {
             if(!_dragging) return; _dragging=false;
@@ -76,7 +94,7 @@ public sealed class TimelineControl : Grid,IDisposable
         _surface.PointerWheelChanged+=(_,e)=> { _scale=Math.Clamp(_scale*Math.Pow(1.2,e.GetCurrentPoint(_surface).Properties.MouseWheelDelta/120d),20,800); _surface.Invalidate(); e.Handled=true; };
         SizeChanged+=(_,_)=>_surface.Invalidate(); Unloaded+=(_,_)=>StopPlayback(); _session.DocumentChanged+=Changed; Refresh();
     }
-    private void Changed(object? sender,EventArgs e)=>Refresh();
+    private void Changed(object? sender,EventArgs e) { StopPlayback(); IsClockPreview=false; Refresh(); PreviewTime=Time; }
     public void Refresh()
     {
         _refreshing=true; _boards.ItemsSource=_session.Document.Storyboards.Select(b=>b.Name).ToArray();
@@ -108,18 +126,29 @@ public sealed class TimelineControl : Grid,IDisposable
         ReplaceBoard(AnimationEngine.RemoveKey(board,key.Target,key.Property,key.Time),"Delete keyframe"); _key=null; TimeChanged?.Invoke(this,EventArgs.Empty);
     }
     private void ReplaceBoard(DesignStoryboard board,string label)=>_session.Execute(label,d=>d with { Storyboards=d.Storyboards.Select(b=>b.Id==board.Id ? board : b).ToImmutableArray() });
-    public void Scrub(double time) { Time=Math.Clamp(time,0,ActiveStoryboard?.Duration ?? 2); _timeText.Text=TimeSpan.FromSeconds(Time).ToString(@"m\:ss\.fff"); _surface.Invalidate(); TimeChanged?.Invoke(this,EventArgs.Empty); }
+    public void Scrub(double time)
+    {
+        StopPlayback(); IsClockPreview=false; Time=Math.Clamp(time,0,ActiveStoryboard?.Duration ?? 2); PreviewTime=Time; NotifyTime();
+    }
+    private void NotifyTime()
+    {
+        _timeText.Text=TimeSpan.FromSeconds(Time).ToString(@"m\:ss\.fff");
+        _surface.Invalidate(); TimeChanged?.Invoke(this,EventArgs.Empty);
+    }
     public void TogglePlay()
     {
-        if(_playing) { StopPlayback(); return; } if(ActiveStoryboard is null) return;
-        if(Time>=ActiveStoryboard.Duration) Time=0; _startTime=Time; _clock.Restart(); _playing=true; CompositionTarget.Rendering+=Frame;
+        if(_playing) { StopPlayback(); return; } if(ActiveStoryboard is not { } board) return;
+        _startTime=IsClockPreview && !StoryboardClock.Sample(board,PreviewTime).IsCompleted ? PreviewTime :
+            Time>0 && Time<board.Duration ? board.BeginTime+Time/board.SpeedRatio : 0;
+        IsClockPreview=true; _clock.Restart(); _playing=true; CompositionTarget.Rendering+=Frame;
     }
     private void Frame(object? sender,object args)
     {
         if(!_playing || ActiveStoryboard is not { } board) { StopPlayback(); return; }
-        var t=_startTime+_clock.Elapsed.TotalSeconds;
-        if(t>=board.Duration && !board.Loop) { Scrub(board.Duration); StopPlayback(); return; }
-        Scrub(board.Loop ? t%board.Duration : t);
+        PreviewTime=Math.Min(_startTime+_clock.Elapsed.TotalSeconds,StoryboardClock.EndTime(board));
+        var sample=StoryboardClock.Sample(board,PreviewTime); Time=sample.LocalTime; IsClockPreview=true;
+        if(sample.IsCompleted) StopPlayback();
+        NotifyTime();
     }
     private void StopPlayback() { if(_playing) CompositionTarget.Rendering-=Frame; _playing=false; _clock.Stop(); }
     public void Stop() { StopPlayback(); Scrub(0); }

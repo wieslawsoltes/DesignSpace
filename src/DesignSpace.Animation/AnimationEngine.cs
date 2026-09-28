@@ -25,6 +25,14 @@ public static class AnimationEngine
     /// <summary>Coalesces every animated/state property before one structural-sharing tree update.</summary>
     public static DesignNode Evaluate(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null)
     {
+        if(storyboard is null) return EvaluateLocal(root,null,0,state);
+        var sample=StoryboardClock.Sample(storyboard,time);
+        return EvaluateLocal(root,sample.Applies ? storyboard : null,sample.LocalTime,state);
+    }
+    /// <summary>Evaluates the editable keyframe interval directly, independent of repeat/delay/speed settings.</summary>
+    public static DesignNode EvaluateLocal(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null)
+    {
+        if(!double.IsFinite(time)) throw new ArgumentOutOfRangeException(nameof(time));
         if(state is null && storyboard is null) return root;
         var index=DesignIndex.For(root); var changes=new Dictionary<Guid,IReadOnlyDictionary<string,string>>();
         Dictionary<string,string> Values(Guid id)
@@ -35,7 +43,7 @@ public static class AnimationEngine
         if(state is not null) foreach(var setter in state.Setters) if(index.Find(setter.TargetId) is not null) Values(setter.TargetId)[setter.Property]=setter.Value;
         if(storyboard is not null)
         {
-            time=storyboard.Loop ? Math.Max(0,time)%storyboard.Duration : Math.Clamp(time,0,storyboard.Duration);
+            time=Math.Clamp(time,0,storyboard.Duration);
             foreach(var track in storyboard.Tracks)
             {
                 var node=index.Find(track.TargetId); if(node is null) continue;
@@ -45,7 +53,7 @@ public static class AnimationEngine
                 values[track.Property]=Numbers.Format(Evaluate(track,time,baseline));
             }
         }
-        return DesignTree.SetProperties(root,changes);
+        return DesignTree.SetProperties(root,changes,replacePropertyElements:true);
     }
     public static DesignNode Apply(DesignNode root,Guid id,string property,string value)=>root.Update(id,n=>property=="Rotation" ? n with { Rotation=Numbers.Parse(value) } : n.Set(property,value));
     public static DesignStoryboard SetKey(DesignStoryboard board,Guid target,string property,double time,double value,string easing="Linear")
@@ -57,6 +65,17 @@ public static class AnimationEngine
         var track=position<0 ? new AnimationTrack(target,property,[]) : board.Tracks[position];
         track=track with { Keys=track.Keys.Where(k=>Math.Abs(k.Time-time)>.00001).Append(new(time,value,easing)).OrderBy(k=>k.Time).ToImmutableArray() };
         return board with { Tracks=position<0 ? board.Tracks.Add(track) : board.Tracks.SetItem(position,track) };
+    }
+    public static DesignStoryboard ChangeDuration(DesignStoryboard board,double duration,bool scaleKeys)
+    {
+        if(!double.IsFinite(duration) || duration<=0) throw new ArgumentOutOfRangeException(nameof(duration));
+        if(duration==board.Duration) return board;
+        if(!scaleKeys && board.Tracks.Any(t=>t.Keys.Any(k=>k.Time>duration)))
+            throw new InvalidOperationException("The new duration would exclude keyframes. Enable Scale keyframes or move them first.");
+        return board with { Duration=duration,Tracks=scaleKeys ? board.Tracks.Select(t=>t with
+        {
+            Keys=t.Keys.Select(k=>k with { Time=k.Time/board.Duration*duration }).ToImmutableArray()
+        }).ToImmutableArray() : board.Tracks };
     }
     public static DesignStoryboard RemoveKey(DesignStoryboard board,Guid target,string property,double time)=>board with { Tracks=board.Tracks.Select(t=>t.TargetId==target && t.Property==property ? t with { Keys=t.Keys.Where(k=>Math.Abs(k.Time-time)>.00001).ToImmutableArray() } : t).Where(t=>!t.Keys.IsEmpty).ToImmutableArray() };
 }

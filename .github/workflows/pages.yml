@@ -33,6 +33,11 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('global.json', '**/*.csproj') }}
           restore-keys: ${{ runner.os }}-nuget-
       - run: dotnet workload install wasm-tools --skip-manifest-update
+      - name: Gate deployment on portable regressions
+        run: |
+          dotnet run --project tests/DesignSpace.Tests -c Release
+          dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
+          dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
       - name: Publish real Uno WebAssembly application
         run: dotnet publish src/DesignSpace.App -f net10.0-browserwasm -c Release -p:DesignSpaceTargetFrameworks=net10.0-browserwasm -p:WasmShellWebAppBasePath=/DesignSpace/ -o artifacts/browser
       - name: Stage static site

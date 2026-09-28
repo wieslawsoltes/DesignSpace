@@ -32,7 +32,7 @@ public sealed class StudioButton : Button
     public bool IsSelected { get=>_selected; set { _selected=value; Background=value ? StudioTheme.Accent : StudioTheme.Brush("#00000000"); } }
     public StudioButton(string text,Action? action=null,string? name=null)
     {
-        Content=StudioTheme.Text(text); Background=StudioTheme.Brush("#00000000"); Foreground=StudioTheme.Foreground;
+        Content=StudioCommandIcon.CreateContent(text); Background=StudioTheme.Brush("#00000000"); Foreground=StudioTheme.Foreground;
         BorderThickness=new Thickness(0); CornerRadius=new CornerRadius(0); Padding=new Thickness(7,3,7,3); MinHeight=23; MinWidth=0;
         HorizontalContentAlignment=HorizontalAlignment.Left; VerticalContentAlignment=VerticalAlignment.Center;
         AutomationProperties.SetName(this,name ?? text); ToolTipService.SetToolTip(this,name ?? text);

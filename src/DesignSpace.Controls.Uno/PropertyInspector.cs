@@ -17,6 +17,9 @@ public sealed class PropertyInspector : Grid,IDisposable
     private DesignDocument? _displayed;
     private ImmutableHashSet<Guid> _selection=[];
     public string ActiveProperty { get; private set; }="Opacity";
+    public Func<DesignNode,string,string?>? ValueOverride { get; set; }
+    public string EditingContext { get; set; }="";
+    public bool AllowInlineBrushEditing { get; set; }=true;
     public event EventHandler<(string Property,string Value)>? PropertyEdited;
     public event EventHandler<string>? ActivePropertyChanged;
     public event EventHandler<string>? Error;
@@ -41,6 +44,7 @@ public sealed class PropertyInspector : Grid,IDisposable
             var nodes=_selection.Select(id=>_session.Document.Root.Find(id)).OfType<DesignNode>().ToArray();
             if(nodes.Length==0) { _body.Children.Add(StudioTheme.Text("Select an object to edit its properties.",11,"#99999F")); return; }
             var n=nodes[0];
+            if(EditingContext.Length>0) _body.Children.Add(StudioTheme.Text(EditingContext,11,"#E6B36D"));
             _body.Children.Add(StudioTheme.Text(nodes.Length==1 ? "Type   "+n.Type : nodes.Length+" objects selected",11,"#AFAFB6"));
             AddField("Name",DesignNode.NameKey,n.Get(DesignNode.NameKey,n.Get("Name")),nodes.Length>1);
             var brushProperty=n.Type is "Rectangle" or "Ellipse" or "Path" ? "Fill" : "Background";
@@ -49,13 +53,13 @@ public sealed class PropertyInspector : Grid,IDisposable
             {
                 var modes=new StackPanel { Orientation=Orientation.Horizontal,Spacing=2,Margin=new Thickness(0,2,0,3) };
                 foreach(var mode in new[]{"None","Solid","Linear","Radial"}) modes.Children.Add(new StudioButton(mode,()=>SetBrush(brushProperty,mode),mode+" brush"));
-                _body.Children.Add(modes); var color=new ColorEditorControl { Value=n.Get(brushProperty,"#FF0078D4"),Margin=new Thickness(0,2,0,5) };
+                _body.Children.Add(modes); var color=new ColorEditorControl { Value=Effective(n,brushProperty,"#FF0078D4"),Margin=new Thickness(0,2,0,5) };
                 color.ColorChanged+=(_,value)=>Edit(brushProperty,value); _body.Children.Add(color);
             }
             Section("Appearance"); AddField("Opacity","Opacity",Common(nodes,"Opacity","1")); AddField("Visibility","Visibility",Common(nodes,"Visibility","Visible")); AddField("Stroke thickness","StrokeThickness",Common(nodes,"StrokeThickness","1")); AddField("Corner radius","CornerRadius",Common(nodes,"CornerRadius","0"));
             Section("Layout"); AddField("Width","Width",Common(nodes,"Width","Auto")); AddField("Height","Height",Common(nodes,"Height","Auto")); AddField("X","Canvas.Left",Common(nodes,"Canvas.Left","0")); AddField("Y","Canvas.Top",Common(nodes,"Canvas.Top","0")); AddField("Margin","Margin",Common(nodes,"Margin","0")); AddField("Padding","Padding",Common(nodes,"Padding","0")); AddField("Horizontal","HorizontalAlignment",Common(nodes,"HorizontalAlignment","Stretch")); AddField("Vertical","VerticalAlignment",Common(nodes,"VerticalAlignment","Stretch"));
             AddField("Grid row","Grid.Row",Common(nodes,"Grid.Row","0")); AddField("Grid column","Grid.Column",Common(nodes,"Grid.Column","0"));
-            Section("Transform"); AddField("Rotation","Rotation",Numbers.Format(n.Rotation));
+            Section("Transform"); AddField("Rotation","Rotation",Effective(n,"Rotation",Numbers.Format(n.Rotation)));
             if(n.Type is "TextBlock" or "TextBox" or "Button" or "CheckBox" or "RadioButton")
             {
                 Section("Text"); var property=n.Type is "TextBlock" or "TextBox" ? "Text" : "Content"; AddField(property,property,Common(nodes,property)); AddField("Font size","FontSize",Common(nodes,"FontSize","14")); AddField("Foreground","Foreground",Common(nodes,"Foreground","#FF202838")); AddField("Font family","FontFamily",Common(nodes,"FontFamily","Segoe UI"));
@@ -65,7 +69,8 @@ public sealed class PropertyInspector : Grid,IDisposable
         }
         finally { _refreshing=false; }
     }
-    private static string Common(DesignNode[] nodes,string key,string fallback="")=>nodes.Select(n=>n.Get(key,fallback)).Distinct().Count()==1 ? nodes[0].Get(key,fallback) : "<multiple>";
+    private string Effective(DesignNode node,string key,string fallback="")=>ValueOverride?.Invoke(node,key) ?? node.Get(key,fallback);
+    private string Common(DesignNode[] nodes,string key,string fallback="")=>nodes.Select(n=>Effective(n,key,fallback)).Distinct().Count()==1 ? Effective(nodes[0],key,fallback) : "<multiple>";
     private void Section(string title)=>_body.Children.Add(new Border { Background=StudioTheme.Brush("#2C2C2F"),Margin=new Thickness(-3,6,-3,2),Padding=new Thickness(3,4,3,4),Child=StudioTheme.Text("▾  "+title,11) });
     private void AddField(string label,string key,string value,bool readOnly=false)
     {
@@ -91,13 +96,14 @@ public sealed class PropertyInspector : Grid,IDisposable
         if(mode is "None" or "Solid") { Edit(property,mode=="None" ? "Transparent" : "#FF0078D4"); return; }
         try
         {
+            if(!AllowInlineBrushEditing) throw new InvalidOperationException("In state recording, choose a solid color or a brush resource reference. Inline gradient authoring edits base values only.");
             var ns=(XNamespace)DesignNode.PresentationNamespace; var ids=_session.Selection.ToArray();
             _session.Execute("Set "+mode+" brush",d=>
             {
                 var root=d.Root;
                 foreach(var id in ids) root=root.Update(id,n=>
                 {
-                    if(n.IsLocked) return n;
+                    if(_session.Index.IsLocked(n.Id)) return n;
                     var color=n.Get(property,"#FF0078D4"); if(color.StartsWith('{')) color="#FF0078D4";
                     var brush=new XElement(ns+(mode+"GradientBrush"),new XElement(ns+"GradientStop",new XAttribute("Color",color),new XAttribute("Offset","0")),new XElement(ns+"GradientStop",new XAttribute("Color","#FFFFFFFF"),new XAttribute("Offset","1")));
                     var element=new XElement(ns+(n.Type+"."+property),brush);
