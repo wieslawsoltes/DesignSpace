@@ -73,9 +73,9 @@ public static class DesignPreview
             foreach(var p in n.Properties)
             {
                 var key=ResourceKey(p.Value); var resource=key is null ? null : scope.Find(key);
-                if(resource?.Name.LocalName=="SolidColorBrush") n=n.Set(p.Key,(string?)resource.Attribute("Color") ?? "Transparent");
+                if(resource?.Name.LocalName=="SolidColorBrush" && !resource.HasElements && resource.Attributes().All(a=>a.IsNamespaceDeclaration||a.Name.LocalName is "Key" or "Name" or "Color")) n=n.Set(p.Key,(string?)resource.Attribute("Color") ?? "Transparent");
                 else if(resource?.Name.LocalName is "String" or "Double" or "Color" or "Thickness") n=n.Set(p.Key,resource.Value);
-                else if(resource?.Name.LocalName is "LinearGradientBrush" or "RadialGradientBrush") n=n with { Properties=n.Properties.Remove(p.Key),PropertyElements=n.PropertyElements.Add(new XElement(XName.Get(n.Type+"."+p.Key,n.Namespace),new XElement(resource)).ToString(SaveOptions.DisableFormatting)) };
+                // Keep complete brush references for lexical resource resolution, including opacity and transforms.
             }
             return n;
         }

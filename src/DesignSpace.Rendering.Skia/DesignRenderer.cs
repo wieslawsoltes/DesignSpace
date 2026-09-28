@@ -17,7 +17,6 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
     private readonly EmbeddedImages _images=new();
     private LayoutSnapshot? _indexed;
     private Dictionary<Guid,LayoutEntry[]> _children=[];
-    private Dictionary<string,XElement> _resources=[];
     private readonly List<string> _diagnostics=[];
     public IReadOnlyList<string> Diagnostics=>_diagnostics;
     public double LastDrawMilliseconds { get; private set; }
@@ -67,12 +66,8 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
     }
     private void Index(LayoutSnapshot layout)
     {
-        if(ReferenceEquals(_indexed,layout))return;_indexed=layout;_resources=new(StringComparer.Ordinal);
-        foreach(var raw in layout.Entries[0].Node.PropertyElements)
-        {
-            var property=XElement.Parse(raw);if(!property.Name.LocalName.EndsWith(".Resources",StringComparison.Ordinal))continue;
-            foreach(var e in property.Descendants()){var key=e.Attributes().FirstOrDefault(a=>a.Name.LocalName=="Key")?.Value;if(key is not null)_resources[key]=e;}
-        }
+        if(ReferenceEquals(_indexed,layout))return;_indexed=layout;
+        _brushResolver=new BrushResolver(layout.Entries[0].Node);
         _children=layout.Entries.Where(e=>e.ParentId is not null).GroupBy(e=>e.ParentId!.Value).ToDictionary(g=>g.Key,g=>g.ToArray());
     }
     public void DrawScene(SKCanvas c,LayoutSnapshot layout)
@@ -83,7 +78,20 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
             if(!entry.IsEffectivelyVisible||entry.Opacity<=0)return;
             var outerCount=c.SaveCount;c.Save();Concat(c,entry.LocalTransform);var b=Rect(entry.Bounds);var n=entry.Node;
             var opacity=Math.Clamp(n.Number("Opacity",1),0,1);using var layer=opacity<1 ? new SKPaint{Color=SKColors.White.WithAlpha((byte)(opacity*255))} : null;
-            if(layer is not null)c.SaveLayer(layer);
+            SKPaint? mask=null;
+            try
+            {
+                if(StrokeStyle.HasBrush(n,"OpacityMask"))
+                {
+                    var shader=Brush(n,"OpacityMask",b);
+                    if(shader is not null)mask=new SKPaint{Shader=shader,BlendMode=SKBlendMode.DstIn,Color=SKColors.White};
+                }
+            }
+            catch(Exception ex)when(ex is InvalidDataException or InvalidOperationException or ArgumentException)
+            {if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);}
+            using var maskPaint=mask;
+            if(layer is not null||mask is not null)c.SaveLayer(layer);
+
             try
             {
                 if(VectorGeometry.ReadClip(n) is { } clip)c.ClipPath(_paths.Get(clip,DMatrix.Translate(b.Left,b.Top)),SKClipOperation.Intersect,true);
@@ -100,6 +108,7 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
             }
             if(n.Get("ClipToBounds")=="True"||n.Type is "Page" or "UserControl" or "Window")c.ClipRect(b);
             if(_children.TryGetValue(n.Id,out var children))foreach(var child in children)Walk(child);
+            if(mask is not null)c.DrawPaint(mask);
             c.RestoreToCount(outerCount);
         }
         c.Save();c.ClipRect(Rect(layout.Entries[0].Bounds));Walk(layout.Entries[0]);c.Restore();
@@ -111,15 +120,20 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         if(b.Width<=0||b.Height<=0)return;
         if(n.Get("{https://designspace.dev/designer}TemplateExpanded")=="True")return;
         var fill=Color(n.Get("Background"),n.Type is "Page" or "Window" or "UserControl" ? SKColors.White : SKColors.Transparent);
-        using var shader=Brush(n,"Background",b,_resources);_fill.Color=shader is null ? fill : SKColors.White;_fill.Shader=shader;
+        var shader=Brush(n,"Background",b);_fill.Color=shader is null ? fill : SKColors.White;_fill.Shader=shader;
         _stroke.Color=Color(n.Get("BorderBrush"),SKColors.Transparent);_stroke.StrokeWidth=(float)n.Number("BorderThickness",1);
         var radius=(float)Numbers.Parse(n.Get("CornerRadius"));
         if(fill.Alpha>0||shader is not null)c.DrawRoundRect(b,radius,radius,_fill);
-        if(_stroke.Color.Alpha>0&&_stroke.StrokeWidth>0)c.DrawRoundRect(b,radius,radius,_stroke);
+        var border=Brush(n,"BorderBrush",b);
+        if((_stroke.Color.Alpha>0||border is not null)&&_stroke.StrokeWidth>0)
+        {
+            _stroke.Shader=border;if(border is not null)_stroke.Color=SKColors.White;
+            try{c.DrawRoundRect(b,radius,radius,_stroke);}finally{_stroke.Shader=null;}
+        }
         _fill.Shader=null;
         if(n.Type is "TextBlock" or "Button" or "TextBox" or "ContentPresenter")
         {
-            var textBounds=b;if(n.Type=="TextBox")textBounds.Inflate(-8,0);_text.DrawNode(c,n,textBounds,Color(n.Get("Foreground"),new SKColor(32,40,56)),n.Type is "Button" or "TextBox");
+            var textBounds=b;if(n.Type=="TextBox")textBounds.Inflate(-8,0);_text.DrawNode(c,n,textBounds,Color(n.Get("Foreground"),new SKColor(32,40,56)),n.Type is "Button" or "TextBox",Brush(n,"Foreground",b));
         }
         if(n.Type is "CheckBox" or "RadioButton" or "ToggleSwitch")
         {
@@ -127,7 +141,7 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
             if(n.Type=="RadioButton")c.DrawOval(box,_fill);else c.DrawRect(box,_fill);
             _stroke.Color=new SKColor(120,120,120);_stroke.StrokeWidth=1;if(n.Type=="RadioButton")c.DrawOval(box,_stroke);else c.DrawRect(box,_stroke);
             if(n.Get("IsChecked")=="True"){Line(c,b.Left+4,b.MidY,b.Left+7,b.MidY+3,SKColors.White,1.5);Line(c,b.Left+7,b.MidY+3,b.Left+13,b.MidY-4,SKColors.White,1.5);}
-            _text.DrawNode(c,n,SKRect.Create(b.Left+24,b.Top,Math.Max(0,b.Width-24),b.Height),Color(n.Get("Foreground"),new SKColor(32,40,56)));
+            _text.DrawNode(c,n,SKRect.Create(b.Left+24,b.Top,Math.Max(0,b.Width-24),b.Height),Color(n.Get("Foreground"),new SKColor(32,40,56)),false,Brush(n,"Foreground",b));
         }
         if(n.Type is "Slider" or "ProgressBar")
         {
@@ -150,5 +164,5 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         using var surface=SKSurface.Create(new SKImageInfo((int)w,(int)h));if(surface is null)throw new InvalidOperationException("Unable to allocate export surface.");
         surface.Canvas.Clear(SKColors.Transparent);surface.Canvas.Scale(scale);DrawScene(surface.Canvas,layout);using var image=surface.Snapshot();using var data=image.Encode(SKEncodedImageFormat.Png,100);return data.ToArray();
     }
-    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_strokeShapes.Dispose();_shapePaint.Dispose();_shapeSources.Clear();_basicShapes.Clear();_text.Dispose();_images.Dispose();_children.Clear();_resources.Clear();_indexed=null;}
+    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_strokeShapes.Dispose();_shapePaint.Dispose();_shapeSources.Clear();_basicShapes.Clear();_text.Dispose();_images.Dispose();_children.Clear();_brushShaders.Dispose();_brushResolver=null;_indexed=null;}
 }

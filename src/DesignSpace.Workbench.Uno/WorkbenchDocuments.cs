@@ -22,6 +22,7 @@ public sealed partial class WorkbenchView
         yield return("Data",Data);
         if(_templateEditor is not null)yield return("Templates",_templateEditor);
         if(_strokeEditor is not null)yield return("Stroke",_strokeEditor);
+        if(_brushEditor is not null)yield return("Brush",_brushEditor);
         if(_stateTransitions is not null)yield return("Transitions",_stateTransitions);
         if(_storyboardInspector is not null)yield return("Timing",_storyboardInspector);
     }

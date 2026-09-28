@@ -98,4 +98,6 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
   await stateTransitions({page,snapshot,click,check,directory});
   const {strokes}=await import('./strokes.mjs');
   await strokes({page,snapshot,click,check,directory});
+  const {brushes}=await import('./brushes.mjs');
+  await brushes({page,snapshot,click,check,directory});
 }

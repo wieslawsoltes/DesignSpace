@@ -21,6 +21,8 @@ Draw editable vector paths with **Pen (P)** and **Pencil (Y)**, then use **Direc
 
 **Document tabs** keep independent undo/redo, selection, viewport, source and supported panel drafts. New/Open add documents; Project lists the open set. Save All, protected close, pin/reorder, horizontal/vertical split views and Design/Animation workspace profiles are implemented. Save a `.designspace-workspace` file to retain all designs and unapplied drafts together. One active workbench/renderer is reused across tabs; in-memory history survives switching but is not serialized. See [workspace usage and host integration](docs/workspaces.md).
 
+**Brush** authors local solid, linear and elliptical/focal radial gradients with draggable stops, mapping/spread modes, transforms, opacity and subtree opacity masks. Invalid or stale drafts remain isolated, including across document tabs and workspace recovery. Native shaders and scoped resource resolution are shared by shapes, text and borders. See [brush authoring and integration](docs/brushes.md).
+
 XAML drafts are isolated from the current document until explicitly applied. Invalid drafts remain editable, stale revisions are rejected, and named elements retain their identity during source reconciliation. Imported XAML is data: no assemblies or arbitrary markup extensions execute.
 
 Create numeric keyframes for position, size, opacity and rotation. Scrub the original keyframe interval or configure delay, speed, auto-reverse, repeat count/duration/forever and HoldEnd/Stop playback in Timing. Duration changes can proportionally retime keys; shortening without scaling rejects excluded keys instead of dropping them.
@@ -39,7 +41,7 @@ Save native `.designspace` files, export XAML or a 2× PNG, and recover the last
 | `DesignSpace.Xaml` | Inert XAML codec, trim-safe native persistence and JSON sample data |
 | `DesignSpace.Rendering.Skia` | Host-owned canvas rendering, viewport, adorners and PNG export |
 | `DesignSpace.Docking.Uno` | Compact theme, tabs, splitters and floating panes |
-| `DesignSpace.Controls.Uno` | Artboard, outline, properties, source, timeline/timing, states, templates, layout, stroke, assets, resources and data controls |
+| `DesignSpace.Controls.Uno` | Artboard, outline, properties, source, timeline/timing, states, templates, layout, stroke, brush, assets, resources and data controls |
 | `DesignSpace.Workbench.Uno` | Embeddable workbench and platform-service boundary |
 
 Portable packages target .NET 10. Uno libraries target desktop and WebAssembly. The application is a separate thin host. CI generates packages; nothing is automatically published to NuGet.org.
@@ -57,7 +59,7 @@ session.Undo();
 string xaml = XamlCodec.Write(session.Document);
 ```
 
-Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing, Transitions, Paths, Stroke and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
+Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing, Transitions, Paths, Stroke, Brush and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
 
 ## Build and run
 
@@ -88,7 +90,7 @@ The renderer draws directly into the **host-owned Skia canvas**, sharing Uno's G
 
 The status bar reports **CPU draw-submission duration**, not GPU completion or end-to-end presentation latency. Browser CI uses Chromium with software-backed WebGL/SwiftShader, not physical GPU benchmarks.
 
-`build.yml` runs portable, compatibility, rendering, vector and workspace suites, reruns both document and workspace persistence tests in trimmed executables with reflection serialization disabled, packs portable libraries and compiles desktop targets on Windows, macOS and Linux. `pages.yml` requires the portable regressions and published Uno browser interactions before deployment, preserves screenshots/diagnostics and checks the public commit identity. `release.yml` tests and packs all eight dual-target/portable packages, verifies framework coverage and emits source/checksum artifacts. Source, test and dependency changes exercise full package creation in PRs and on main; only a separate tag-gated publication job can create a preview release. No automatic public NuGet publication occurs.
+`build.yml` runs portable, compatibility and rendering suites, reruns persistence tests in a trimmed executable with reflection serialization disabled, packs portable libraries and compiles desktop targets on Windows, macOS and Linux. `pages.yml` requires the portable regressions and published Uno browser interactions before deployment, preserves screenshots/diagnostics and checks the public commit identity. `release.yml` tests and packs all eight dual-target/portable packages, verifies framework coverage and emits source/checksum artifacts. Source, test and dependency changes exercise full package creation in PRs and on main; only a separate tag-gated publication job can create a preview release. No automatic public NuGet publication occurs.
 
 ## License and attribution
 
