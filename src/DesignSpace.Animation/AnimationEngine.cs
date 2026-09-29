@@ -14,8 +14,10 @@ public static class AnimationEngine
     };
     private static double Ease(double progress,AnimationKey key,AnimationSamplingContext? context)
     {
-        // WPF keyframes preserve exact endpoint values even for degenerate Power=0 functions.
-        if(progress<=0)return 0;if(progress>=1)return 1;
+        // A first positive-time key evaluates its easing at progress zero: Power=0
+        // deliberately jumps. Exact key arrivals are handled by Evaluate, not here.
+        if(progress>=1)return 1;
+        if(progress<=0&&key.Easing!="Function")return 0;
         return key.Easing switch
         {
             "Spline"=>context?.Sample(key,progress)??(key.Spline??throw new InvalidDataException("Missing KeySpline.")).Evaluate(progress),
@@ -29,11 +31,11 @@ public static class AnimationEngine
         if(!double.IsFinite(time)||!double.IsFinite(baseValue))throw new ArgumentOutOfRangeException(nameof(time));
         if(track.Keys.IsEmpty)return baseValue;
         var keys=SortedKeys.GetValue(track,t=>t.Keys.OrderBy(k=>k.Time).ToArray());
-        if(time<=keys[0].Time)return keys[0].Time<=0?keys[0].Value:baseValue+(keys[0].Value-baseValue)*Ease(Math.Clamp(time/keys[0].Time,0,1),keys[0],context);
+        if(time<=keys[0].Time)return time==keys[0].Time||keys[0].Time<=0?keys[0].Value:baseValue+(keys[0].Value-baseValue)*Ease(Math.Clamp(time/keys[0].Time,0,1),keys[0],context);
         var low=1;var high=keys.Length;
         while(low<high){var mid=(low+high)/2;if(keys[mid].Time<=time)low=mid+1;else high=mid;}
         if(low==keys.Length)return keys[^1].Value;
-        var a=keys[low-1];var b=keys[low];return a.Value+(b.Value-a.Value)*Ease((time-a.Time)/(b.Time-a.Time),b,context);
+        var a=keys[low-1];var b=keys[low];if(time==a.Time)return a.Value;return a.Value+(b.Value-a.Value)*Ease((time-a.Time)/(b.Time-a.Time),b,context);
     }
     /// <summary>Maps elapsed time through the parent clock, then through every independently timed child.</summary>
     public static DesignNode Evaluate(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null,AnimationSamplingContext? context=null)

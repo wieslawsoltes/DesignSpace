@@ -2,6 +2,7 @@ import {chromium} from 'playwright';
 import {mkdir,writeFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import {animationTracks} from './animation-tracks.mjs';
+import {easingFunctions} from './easing-functions.mjs';
 
 const base=process.argv[2]||'http://127.0.0.1:4173/DesignSpace/';
 const directory='artifacts/verification/animation';await mkdir(directory,{recursive:true});
@@ -21,6 +22,7 @@ try {
   await page.goto(base+'?diagnostics=1',{waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>globalThis.designSpaceDiagnostics?.ready&&globalThis.designSpaceDiagnostics.drawCount>0,null,{timeout:180000});
   await animationTracks({page,snapshot,click,check,directory});
+  await easingFunctions({page,snapshot,click,check,directory});
   assert.deepEqual(errors,[]);const state=await snapshot();assert.deepEqual(state.rendering.warnings,[]);assert.deepEqual(state.rendering.previewWarnings,[]);
   assert.ok(!log.some(line=>line.startsWith('error: [DesignSpace')));
 } catch(error){
