@@ -25,7 +25,15 @@ export async function easingFunctions({page,snapshot,click,check,directory}) {
     }
     throw new Error(`Cannot reveal ${name}`);
   }
-  async function press(name){const c=await reveal(name);await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2);await settle();}
+  async function press(name){
+    let c=await reveal(name);
+    for(let i=0;i<8;i++){
+      await settle();const next=await reveal(name);
+      if(next.X===c.X&&next.Y===c.Y&&next.Width===c.Width&&next.Height===c.Height){c=next;break;}
+      c=next;
+    }
+    await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2);await settle();
+  }
   async function edit(name,value){
     await press(name);await page.waitForFunction(n=>globalThis.designSpaceDiagnostics.focus===n,name,{timeout:10000});
     await page.keyboard.press('Control+A');await page.keyboard.insertText(value);
@@ -85,6 +93,7 @@ export async function easingFunctions({page,snapshot,click,check,directory}) {
   });
   await check('easing function is preserved in native export',async()=>{
     const pending=page.waitForEvent('download');await click('Save design');const file=await pending;await file.saveAs(directory+'/easing-study.designspace');const doc=JSON.parse(await readFile(directory+'/easing-study.designspace','utf8'));const key=doc.storyboards[0].tracks[0].keys.at(-1);assert.equal(key.easing,'Function');assert.equal(key.function.power,0);
+    await page.waitForFunction(()=>{const s=globalThis.designSpaceDiagnostics;return !s.dirty&&s.status==='Saved EasingStudy.designspace';});await settle();
   });
   await check('invalid easing drafts follow only their owning document',async()=>{
     await edit('Easing Power','invalid power');const before=await snapshot();await click('New design');await page.waitForFunction(id=>globalThis.designSpaceDiagnostics.workspace.active!==id,documentId);const other=(await snapshot()).workspace.active;

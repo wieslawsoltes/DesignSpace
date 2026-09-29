@@ -33,6 +33,8 @@ In States, create and rename groups, keep one active state per group, and previe
 
 Save native `.designspace` files, export XAML or a 2× PNG, and recover the last local workspace. Recovery is local to the browser origin or desktop profile and is **not a backup**. Use Save for durable copies.
 
+The **Animation** inspector also authors all eleven built-in easing families (including Bounce, Elastic and Back), their directions and parameters. The curve preview retains overshoot, edits stay in document-specific drafts, and strict XAML import preserves unsupported functions. [Easing authoring and integration](docs/easing.md) documents the native WPF reference gate, edge cases and safety limits.
+
 ## Eight reusable libraries
 
 | Package | Responsibility |

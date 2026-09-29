@@ -66,6 +66,10 @@ internal static class XamlAnimationCodec
                     var functions=wrappers[0].Elements().ToArray();
                     if(functions.Length!=1||!EasingCurveCodec.TryRead(functions[0],out function))return false;
                 }
+                // Simple DoubleAnimation evaluates the function at its clock endpoints;
+                // keyframe tracks instead honor explicit key arrivals. Preserve discontinuous
+                // functions (for example Power=0) rather than changing those semantics.
+                if(function is not null&&(Math.Abs(function.Evaluate(0))>1e-12||Math.Abs(function.Evaluate(1)-1)>1e-12))return false;
                 if(animation.Attribute("From") is { } fromText){if(!Number(fromText.Value,out var from))return false;keys.Add(new(0,from));}
                 keys.Add(CurveKey(childDuration,to,function));
             }

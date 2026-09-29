@@ -104,7 +104,17 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
         _independent.IsChecked=values.GetValueOrDefault("Independent")=="True";_reverse.IsChecked=values.GetValueOrDefault("Reverse")=="True";_scale.IsChecked=values.GetValueOrDefault("Scale")=="True";
         _repeat.SelectedItem=values.GetValueOrDefault("Repeat mode","Count");_fill.SelectedItem=values.GetValueOrDefault("Fill behavior","HoldEnd");_easing.SelectedItem=values.GetValueOrDefault("Easing","Linear");
     }
-    private void Changed(object? sender,EventArgs e){if(!_syncing&&!_applying)Reload();}
+    private void Changed(object? sender,EventArgs e)
+    {
+        if(_syncing||_applying)return;
+        var track=_timeline.SelectedTrack;
+        var key=_timeline.SelectedKey??track?.Keys.OrderBy(k=>k.Time).LastOrDefault();
+        // Saving only changes the dirty marker, not the animation. Keep the live
+        // editors and their scroll/focus state instead of resetting all fields.
+        if(_revision==_session.Revision&&ReferenceEquals(_board,_timeline.ActiveStoryboard)&&
+           ReferenceEquals(_track,track)&&_selectedKey==key?.Time)return;
+        Reload();
+    }
     private void Reload(bool discard=false)
     {
         if(!discard&&Dirty){_status.Text="Animation draft retained. Apply to its original revision or Reload.";return;}
