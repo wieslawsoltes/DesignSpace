@@ -43,7 +43,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
         _session=session;_timeline=timeline;_syncing=true;
         RowDefinitions.Add(new(){Height=new GridLength(29)});RowDefinitions.Add(new(){Height=new GridLength(30)});RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
         var toolbar=new StackPanel{Orientation=Orientation.Horizontal};toolbar.Children.Add(new StudioButton("Apply track",Apply,"Apply animation track"));toolbar.Children.Add(new StudioButton("Reload",()=>Reload(true),"Reload animation track"));Children.Add(toolbar);
-        var body=new StackPanel{Spacing=5,Padding=new Thickness(8)};var scroll=new ScrollViewer{Content=body,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};SetRow(scroll,2);Children.Add(scroll);
+        var body=new StackPanel{Spacing=5,Padding=new Thickness(8)};var scroll=new ScrollViewer{Content=body,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};AutomationProperties.SetName(scroll,"Animation track scroll area");SetRow(scroll,2);Children.Add(scroll);
         _status.TextWrapping=TextWrapping.Wrap;body.Children.Add(_title);body.Children.Add(_status);
         void Field(string label,string value)
         {

@@ -1,3 +1,4 @@
+import {animationInput} from './animation-input.mjs';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {PNG} from 'pngjs';
@@ -21,24 +22,7 @@ export async function animationTracks({page,snapshot,click,check,directory}) {
   const track=(s,id)=>tracks(s).find(t=>t.target===id);
   const preview=(s,id)=>s.timeline.preview.find(n=>n.id===id);
   async function changed(revision){await page.waitForFunction(r=>globalThis.designSpaceDiagnostics.revision===r+1,revision,{timeout:15000});await settle();const s=await snapshot();assert.equal(s.revision,revision+1);return s;}
-  async function reveal(name){
-    await page.waitForFunction(name=>globalThis.designSpaceDiagnostics.controls.some(c=>c.Name===name),name,{timeout:15000});
-    for(let i=0;i<12;i++){
-      const s=await snapshot(),c=s.controls.find(c=>c.Name===name);assert.ok(c,name);
-      if(c.Y>125&&c.Y+c.Height<s.height-55)return c;
-      await page.mouse.move(s.width-110,470);await page.mouse.wheel(0,c.Y<125?-260:260);await settle();
-    }
-    throw new Error(`Cannot reveal ${name}`);
-  }
-  async function press(name){const c=await reveal(name);await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2);await settle();}
-  async function edit(name,value){
-    await press(name);
-    await page.waitForFunction(n=>globalThis.designSpaceDiagnostics.focus===n,name,{timeout:10000});
-    await page.keyboard.press('Control+A');await page.keyboard.insertText(value);
-    await page.waitForFunction(({name,value})=>globalThis.designSpaceDiagnostics.controls.find(c=>c.Name===name)?.Text===value,{name,value},{timeout:10000});
-    await page.keyboard.press('Tab');await settle();
-  }
-  async function choose(name,index){await press(name);await page.keyboard.press('Home');for(let i=0;i<index;i++)await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');await settle();}
+  const {reveal,press,edit,choose}=animationInput(page,snapshot);
   async function editor(){await click('Open Animation panel');await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.controls.some(c=>c.Name==='Animation Duration'));}
   async function row(index){const c=(await snapshot()).controls.find(c=>c.Name==='Animation timeline');await page.mouse.click(c.X+45,c.Y+40+index*25);await settle();await editor();}
   async function apply(){const s=await snapshot();await click('Apply animation track');return changed(s.revision);}

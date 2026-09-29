@@ -1,3 +1,4 @@
+import {animationInput} from './animation-input.mjs';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {PNG} from 'pngjs';
@@ -15,25 +16,7 @@ export async function animationComposition({page,snapshot,click,check,directory}
   const settle=()=>page.waitForTimeout(400);
   const track=s=>s.timeline.details.tracks.find(t=>t.target===targetId);
   async function changed(revision){await page.waitForFunction(r=>globalThis.designSpaceDiagnostics.revision===r+1,revision,{timeout:15000});await settle();const s=await snapshot();assert.equal(s.revision,revision+1);return s;}
-  async function reveal(name){
-    await page.waitForFunction(n=>globalThis.designSpaceDiagnostics.controls.some(c=>c.Name===n),name,{timeout:15000});
-    for(let i=0;i<14;i++){
-      const s=await snapshot(),c=s.controls.find(c=>c.Name===name);assert.ok(c,name);
-      if(c.Y>125&&c.Y+c.Height<s.height-55)return c;
-      await page.mouse.move(s.width-110,470);await page.mouse.wheel(0,c.Y<125?-250:250);await settle();
-    }
-    throw new Error(`Cannot reveal ${name}`);
-  }
-  async function press(name){
-    let c=await reveal(name);
-    for(let i=0;i<8;i++){await settle();const next=await reveal(name);if(next.X===c.X&&next.Y===c.Y&&next.Width===c.Width&&next.Height===c.Height){c=next;break;}c=next;}
-    await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2);await settle();
-  }
-  async function edit(name,value){
-    await press(name);await page.waitForFunction(n=>globalThis.designSpaceDiagnostics.focus===n,name,{timeout:10000});
-    await page.keyboard.press('Control+A');await page.keyboard.insertText(value);
-    await page.waitForFunction(({name,value})=>globalThis.designSpaceDiagnostics.controls.find(c=>c.Name===name)?.Text===value,{name,value},{timeout:10000});await page.keyboard.press('Tab');await settle();
-  }
+  const {reveal,press,edit}=animationInput(page,snapshot);
   async function editor(){await click('Open Animation panel');await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.controls.some(c=>c.Name==='Animation cumulative'));}
   async function apply(){const before=await snapshot();await click('Apply animation track');return changed(before.revision);}
   async function scrub(time){await edit('Animation preview time',String(time));await press('Scrub animation preview');await page.waitForFunction(t=>Math.abs(globalThis.designSpaceDiagnostics.timeline.time-t)<1e-6,time);await settle();return snapshot();}
