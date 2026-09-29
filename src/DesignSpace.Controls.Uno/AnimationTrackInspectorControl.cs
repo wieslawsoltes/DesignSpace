@@ -24,6 +24,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
     private readonly CheckBox _independent=new(){Content="Independent track clock",MinHeight=25};
     private readonly CheckBox _reverse=new(){Content="Auto reverse",MinHeight=25};
     private readonly CheckBox _scale=new(){Content="Scale track keys",MinHeight=25};
+    private readonly AnimationCompositionControl _composition=new();
     private readonly KeySplineEditorControl _curve=new();
     private readonly EasingFunctionEditorControl _function=new();
     private readonly StackPanel _splinePresets=new(){Orientation=Orientation.Horizontal};
@@ -42,7 +43,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
         _session=session;_timeline=timeline;_syncing=true;
         RowDefinitions.Add(new(){Height=new GridLength(29)});RowDefinitions.Add(new(){Height=new GridLength(30)});RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
         var toolbar=new StackPanel{Orientation=Orientation.Horizontal};toolbar.Children.Add(new StudioButton("Apply track",Apply,"Apply animation track"));toolbar.Children.Add(new StudioButton("Reload",()=>Reload(true),"Reload animation track"));Children.Add(toolbar);
-        var body=new StackPanel{Spacing=5,Padding=new Thickness(8)};var scroll=new ScrollViewer{Content=body,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};SetRow(scroll,2);Children.Add(scroll);
+        var body=new StackPanel{Spacing=5,Padding=new Thickness(8)};var scroll=new ScrollViewer{Content=body,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};AutomationProperties.SetName(scroll,"Animation track scroll area");SetRow(scroll,2);Children.Add(scroll);
         _status.TextWrapping=TextWrapping.Wrap;body.Children.Add(_title);body.Children.Add(_status);
         void Field(string label,string value)
         {
@@ -54,6 +55,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
         Field("Duration","2");Field("Begin","0");Field("Speed","1");Choice("Repeat mode",_repeat);Field("Repeat amount","1");
         AutomationProperties.SetName(_reverse,"Animation auto reverse");body.Children.Add(_reverse);Choice("Fill behavior",_fill);
         AutomationProperties.SetName(_scale,"Scale track keys");body.Children.Add(_scale);
+        body.Children.Add(_composition);_composition.DraftChanged+=(_,_)=>DraftChanged();
         Choice("Key",_keys);Field("Key time","0");Field("Value","0");Choice("Easing",_easing);Field("Key spline","0,0 1,1");body.Children.Add(_curve);
         var presets=_splinePresets;
         foreach(var (name,text) in new[]{("Linear","0,0 1,1"),("Ease in","0.42,0 1,1"),("Ease out","0,0 0.58,1"),("Ease both","0.42,0 0.58,1")})
@@ -96,10 +98,10 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
     private static double Read(string text)=>double.TryParse(text,NumberStyles.Float,CultureInfo.InvariantCulture,out var value)&&double.IsFinite(value)?value:throw new InvalidDataException("Enter a finite animation value.");
     private ImmutableDictionary<string,string> Fields()=>_fields.ToImmutableDictionary(p=>p.Key,p=>p.Value.Text)
         .Add("Independent",(_independent.IsChecked==true).ToString()).Add("Reverse",(_reverse.IsChecked==true).ToString()).Add("Scale",(_scale.IsChecked==true).ToString())
-        .Add("Repeat mode",_repeat.SelectedItem as string??"Count").Add("Fill behavior",_fill.SelectedItem as string??"HoldEnd").Add("Easing",_easing.SelectedItem as string??"Linear").AddRange(_function.CaptureDraft());
+        .Add("Repeat mode",_repeat.SelectedItem as string??"Count").Add("Fill behavior",_fill.SelectedItem as string??"HoldEnd").Add("Easing",_easing.SelectedItem as string??"Linear").AddRange(_function.CaptureDraft()).AddRange(_composition.CaptureDraft());
     private void SetFields(IReadOnlyDictionary<string,string> values)
     {
-        _function.RestoreDraft(values);
+        _function.RestoreDraft(values);_composition.RestoreDraft(values);
         foreach(var pair in _fields)if(values.TryGetValue(pair.Key,out var text))pair.Value.Text=text;
         _independent.IsChecked=values.GetValueOrDefault("Independent")=="True";_reverse.IsChecked=values.GetValueOrDefault("Reverse")=="True";_scale.IsChecked=values.GetValueOrDefault("Scale")=="True";
         _repeat.SelectedItem=values.GetValueOrDefault("Repeat mode","Count");_fill.SelectedItem=values.GetValueOrDefault("Fill behavior","HoldEnd");_easing.SelectedItem=values.GetValueOrDefault("Easing","Linear");
@@ -126,6 +128,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
             var t=_track?.Timing??new TrackTiming(_board?.Duration??2);var key=_timeline.SelectedKey??_track?.Keys.OrderBy(k=>k.Time).LastOrDefault();_selectedKey=key?.Time;
             var values=new Dictionary<string,string>{{"Duration",t.Duration.ToString("R",CultureInfo.InvariantCulture)},{"Begin",t.BeginTime.ToString("R",CultureInfo.InvariantCulture)},{"Speed",t.SpeedRatio.ToString("R",CultureInfo.InvariantCulture)},
                 {"Repeat amount",(t.RepeatDuration??t.RepeatCount).ToString("R",CultureInfo.InvariantCulture)},{"Independent",(_track?.Timing is not null).ToString()},{"Reverse",t.AutoReverse.ToString()},{"Scale","False"},
+                {"Additive",(_track?.IsAdditive??false).ToString()},{"Cumulative",(_track?.IsCumulative??false).ToString()},
                 {"Repeat mode",t.Loop?"Forever":t.RepeatDuration is not null?"Duration":"Count"},{"Fill behavior",t.FillBehavior},{"Key time",(key?.Time??0).ToString("R",CultureInfo.InvariantCulture)},
                 {"Value",(key?.Value??0).ToString("R",CultureInfo.InvariantCulture)},{"Easing",key?.Easing??"Linear"},{"Key spline",(key?.Spline??KeySpline.Linear).ToXaml()}};
             SetFields(values);_function.SetCurve(key?.Function??new(EasingFamily.Cubic,Enum.TryParse<EasingDirection>(key?.Easing,out var direction)?direction:EasingDirection.EaseOut));_keys.ItemsSource=_track?.Keys.OrderBy(k=>k.Time).Select(k=>k.Time.ToString("R",CultureInfo.InvariantCulture)).ToArray()??[];_keys.SelectedItem=_selectedKey?.ToString("R",CultureInfo.InvariantCulture);
@@ -154,6 +157,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
             var mode=_repeat.SelectedItem as string;var amount=Read(_fields["Repeat amount"].Text);
             var timing=_independent.IsChecked==true?new TrackTiming(Read(_fields["Duration"].Text),Read(_fields["Begin"].Text),Read(_fields["Speed"].Text),_reverse.IsChecked==true,mode=="Count"?amount:1,mode=="Duration"?amount:null,mode=="Forever",_fill.SelectedItem as string??"HoldEnd"):null;
             var updated=AnimationEngine.ChangeTrackTiming(_board,_track.TargetId,_track.Property,timing,_scale.IsChecked==true);
+            updated=AnimationEngine.ChangeTrackComposition(updated,_track.TargetId,_track.Property,_composition.IsAdditive,_composition.IsCumulative);
             var keyTime=_selectedKey;
             if(_selectedKey is { } oldTime)
             {
@@ -193,7 +197,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
             SetFields(state.Values);_keys.ItemsSource=_track?.Keys.OrderBy(k=>k.Time).Select(k=>k.Time.ToString("R",CultureInfo.InvariantCulture)).ToArray()??[];_keys.SelectedItem=_selectedKey?.ToString("R",CultureInfo.InvariantCulture);
             _original=state.Originals;
             // Earlier saved drafts predate the function fields; their defaults are not new edits.
-            foreach(var pair in _function.CaptureDraft())if(!_original.ContainsKey(pair.Key))_original=_original.Add(pair.Key,pair.Value);
+            foreach(var pair in _function.CaptureDraft().AddRange(_composition.CaptureDraft()))if(!_original.ContainsKey(pair.Key))_original=_original.Add(pair.Key,pair.Value);
             _revision=state.MatchesDesign?_session.Revision:-1;
             if(_board is null||_track is null)_orphan=state with{MatchesDesign=false};
             _title.Text=_track is null?"Missing animation target":(_session.Index.Find(_track.TargetId)?.Name??"?")+" · "+_track.Property;

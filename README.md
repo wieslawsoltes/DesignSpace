@@ -35,6 +35,8 @@ Save native `.designspace` files, export XAML or a 2× PNG, and recover the last
 
 The **Animation** inspector also authors all eleven built-in easing families (including Bounce, Elastic and Back), their directions and parameters. The curve preview retains overshoot, edits stay in document-specific drafts, and strict XAML import preserves unsupported functions. [Easing authoring and integration](docs/easing.md) documents the native WPF reference gate, edge cases and safety limits.
 
+**Additive and cumulative keyframes** can offset the base/state value and accumulate the final key value across child repetitions. The Animation inspector keeps these options in the same draft and transaction as timing and key edits. Reverse-parent repeat boundaries follow the native WPF convention. See [composition semantics, examples and verification](docs/animation-composition.md).
+
 ## Eight reusable libraries
 
 | Package | Responsibility |
