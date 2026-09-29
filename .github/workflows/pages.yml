@@ -59,6 +59,7 @@ jobs:
           ln -s "$PWD/artifacts/site" artifacts/serve/DesignSpace
           python3 -m http.server 4173 --directory artifacts/serve > artifacts/server.log 2>&1 &
           failed=0
+          node tests/browser/animation.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
           node tests/browser/workspace.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
           node tests/browser/workbench.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
           exit "$failed"

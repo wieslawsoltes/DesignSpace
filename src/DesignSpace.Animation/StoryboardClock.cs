@@ -21,8 +21,12 @@ public static class StoryboardClock
         ArgumentNullException.ThrowIfNull(timing);timing.Validate();
         return SampleCore(timing.Duration,timing.BeginTime,timing.SpeedRatio,timing.AutoReverse,timing.RepeatCount,timing.RepeatDuration,timing.Loop,timing.FillBehavior,parentTime);
     }
-    public static StoryboardClockSample Sample(AnimationTrack track,double parentTime,double parentDuration)=>
-        track.Timing is { } timing?Sample(timing,parentTime):new(Math.Clamp(parentTime,0,parentDuration),true,false);
+    public static StoryboardClockSample Sample(AnimationTrack track,double parentTime,double parentDuration)
+    {
+        ArgumentNullException.ThrowIfNull(track);
+        if(!double.IsFinite(parentTime)||!double.IsFinite(parentDuration)||parentDuration<=0)throw new ArgumentOutOfRangeException(nameof(parentTime));
+        return track.Timing is { } timing?Sample(timing,parentTime):new(Math.Clamp(parentTime,0,parentDuration),true,false);
+    }
     private static StoryboardClockSample SampleCore(double duration,double begin,double speed,bool reverse,double repeats,double? repeatDuration,bool forever,string fill,double elapsed)
     {
         if(!double.IsFinite(elapsed))throw new ArgumentOutOfRangeException(nameof(elapsed));
@@ -33,11 +37,11 @@ public static class StoryboardClock
         var cycle=duration*(reverse?2:1);
         var activeDuration=forever?double.PositiveInfinity:repeatDuration??cycle*repeats;
         if(activeDuration==0)return new(0,false,true);
-        var active=(elapsed-begin)*speed;
-        if(!double.IsFinite(active))throw new ArgumentOutOfRangeException(nameof(elapsed),"Clock time overflowed.");
         var completed=!forever&&elapsed>=begin+activeDuration/speed;
         if(completed&&fill=="Stop")return new(0,false,true);
-        var position=completed?activeDuration:active;
+        // Completed finite clocks do not need to multiply arbitrarily large elapsed times.
+        var position=completed?activeDuration:(elapsed-begin)*speed;
+        if(!double.IsFinite(position))throw new ArgumentOutOfRangeException(nameof(elapsed),"Clock time overflowed.");
         var offset=position%cycle;
         if(completed&&position>0&&Math.Abs(offset)<=cycle*1e-12)offset=cycle;
         var local=reverse?Math.Min(offset,cycle-offset):Math.Min(offset,duration);

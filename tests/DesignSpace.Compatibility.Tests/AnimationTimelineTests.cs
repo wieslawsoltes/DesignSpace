@@ -84,6 +84,12 @@ internal static class AnimationTimelineTests
         Test("key editing maps between parent and first child cycle",()=>{var t=Track(new(2,BeginTime:1,SpeedRatio:2));Near(1.5,AnimationEngine.KeyToParentTime(t,1));Near(1,AnimationEngine.ParentToKeyTime(t,1.5,8));});
         Test("session undo restores timing transaction",()=>{var s=new DesignSession(Doc(Board()));var before=s.Document;s.Execute("Timing",d=>d with{Storyboards=[AnimationEngine.ChangeTrackTiming(d.Storyboards[0],n.Id,"Opacity",new(2,BeginTime:1))]});Check(s.Revision==1);s.Undo();Check(ReferenceEquals(before,s.Document));});
         Test("warm spline and clock sampling avoid per-frame allocation",()=>{var t=Track(new(2,BeginTime:1)) with{Keys=[new(2,1,"Spline"){Spline=new(.42,0,.58,1)}]};for(var i=0;i<30;i++){_ =AnimationEngine.Evaluate(t,1,0);_ =StoryboardClock.Sample(t.Timing!,2);}var before=GC.GetAllocatedBytesForCurrentThread();for(var i=0;i<1000;i++){_ =AnimationEngine.Evaluate(t,1,0);_ =StoryboardClock.Sample(t.Timing!,2);}var bytes=GC.GetAllocatedBytesForCurrentThread()-before;Check(bytes<16384);Console.WriteLine("ANIMATION WARM sampled bytes: "+bytes);});
+        Test("root preview retains sub-mill precision from native cubic-easing comparison",()=>{var b=Board() with{Tracks=[new(n.Id,"Width",[new(0,0),new(2,100,"EaseInOut")]){Timing=new(2)}]};Near(.78125,AnimationEngine.Evaluate(root,b,.25).Find(n.Id)!.Number("Width"),1e-12);});
+        Test("root preview does not quantize tiny interpolated values",()=>{var b=Board() with{Tracks=[new(n.Id,"Opacity",[new(0,0),new(2,.000002)]){Timing=new(2)}]};Near(.00000025,Value(b,.25),1e-16);});
+        Test("completed fast finite child holds without elapsed-time overflow",()=>Near(1,Value(Board(new(2,SpeedRatio:1e308)),3)));
+        Test("completed fast stopped child restores base without overflow",()=>Near(.25,Value(Board(new(2,SpeedRatio:1e308,FillBehavior:"Stop")),3)));
+        Test("forever overflow still rejects unrepresentable samples",()=>Reject(()=>StoryboardClock.Sample(new TrackTiming(2,SpeedRatio:1e308,Loop:true),3)));
+        Test("legacy track rejects nonfinite parent sample",()=>Reject(()=>StoryboardClock.Sample(Track(),double.NaN,8)));
         return(passed,failed);
     }
 }

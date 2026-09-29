@@ -55,7 +55,7 @@ public static class AnimationEngine
                 var values=Values(track.TargetId);
                 var baseline=track.Property=="Rotation"?node.Rotation:node.Number(track.Property,track.Property=="Opacity"?1:0);
                 if(values.TryGetValue(track.Property,out var stateValue))baseline=Numbers.Parse(stateValue,baseline);
-                values[track.Property]=Numbers.Format(Evaluate(track,sample.LocalTime,baseline));
+                values[track.Property]=Evaluate(track,sample.LocalTime,baseline).ToString("R",System.Globalization.CultureInfo.InvariantCulture);
             }
         }
         return DesignTree.SetProperties(root,changes,replacePropertyElements:true);

@@ -17,6 +17,13 @@ internal static class Program
     private static int Main()
     {
         var passed=0;var failed=0;var splineSamples=0;var clockSamples=0;
+        const double splineTolerance=.003;
+        const double valueTolerance=.000001;
+        var maxSplineError=0d;var maxAnimatedSplineError=0d;var maxNonSplineError=0d;
+        // WPF's own KeySpline solver stops at accuracy=.001 in parameter space;
+        // dY/dt <= 3. Use the reference implementation's precision, not an
+        // artificially tighter bound. The portable analytic tests remain 1e-7.
+        const string referenceSource="https://source.dot.net/PresentationCore/System/Windows/Media/Animation/KeySpline.cs.html";
         var results=new List<object>();
         void Check(string name,Action run)
         {
@@ -31,7 +38,11 @@ internal static class Program
         foreach(var curve in curves)Check("spline "+curve.ToXaml(),()=>
         {
             var reference=new ReferenceSpline(curve.X1,curve.Y1,curve.X2,curve.Y2);
-            for(var i=0;i<=100;i++){var progress=i/100d;Near(reference.GetSplineProgress(progress),curve.Evaluate(progress),.0003);splineSamples++;}
+            for(var i=0;i<=100;i++)
+            {
+                var progress=i/100d;var expected=reference.GetSplineProgress(progress);var actual=curve.Evaluate(progress);
+                maxSplineError=Math.Max(maxSplineError,Math.Abs(expected-actual));Near(expected,actual,splineTolerance);splineSamples++;
+            }
         });
         var node=DesignNode.Create("Rectangle","Target",0,0,25,20);
         var root=DesignNode.Create("Canvas","Root",0,0,400,200) with{Children=[node]};
@@ -85,7 +96,10 @@ internal static class Program
                 {
                     reference.SeekAlignedToLastTick(host,TimeSpan.FromSeconds(time),TimeSeekOrigin.BeginTime);
                     var actual=AnimationEngine.Evaluate(root,board,time).Find(node.Id)!.Number("Width");
-                    try{Near(target.Width,actual,track.Keys.Any(k=>k.Spline is not null)?.03:.000001);}
+                    var spline=track.Keys.Any(k=>k.Spline is not null);var error=Math.Abs(target.Width-actual);
+                    if(spline)maxAnimatedSplineError=Math.Max(maxAnimatedSplineError,error);else maxNonSplineError=Math.Max(maxNonSplineError,error);
+                    // Every reference animation here has a value range of 100.
+                    try{Near(target.Width,actual,spline?splineTolerance*100:valueTolerance);}
                     catch(Exception e){throw new InvalidOperationException($"Sample at parent time {time:R}: "+e.Message,e);}
                     clockSamples++;
                 }
@@ -97,7 +111,9 @@ internal static class Program
         {
             passed,failed,splineSamples,clockSamples,
             description="Native Windows WPF numerical reference, not Blend UI/pixel or physical-GPU qualification. Root seek is in parent time; root delay/speed are covered separately by portable tests.",
-            splineTolerance=.0003,animatedSplineTolerance=.03,linearTolerance=.000001,results
+            splineTolerance,animatedSplineTolerance=splineTolerance*100,linearTolerance=valueTolerance,
+            maxSplineError,maxAnimatedSplineError,maxNonSplineError,referenceSource,
+            toleranceRationale="WPF KeySpline accuracy=.001, dY/dt <=3; animated spline bound scales by the 100-unit value range. Independent analytic inversion tests are tighter.",results
         },new JsonSerializerOptions{WriteIndented=true}));
         Console.WriteLine($"WPF: {passed} cases passed, {failed} failed; {splineSamples} spline + {clockSamples} clock samples.");return failed==0?0:1;
     }

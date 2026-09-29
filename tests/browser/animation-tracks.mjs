@@ -38,6 +38,14 @@ export async function animationTracks({page,snapshot,click,check,directory}) {
   async function apply(){const s=await snapshot();await click('Apply animation track');return changed(s.revision);}
   async function scrub(time){await edit('Animation preview time',String(time));await press('Scrub animation preview');await page.waitForFunction(t=>Math.abs(globalThis.designSpaceDiagnostics.timeline.time-t)<1e-6,time);await settle();return snapshot();}
   async function document(id){const s=await snapshot(),d=s.workspace.documents.find(d=>d.id===id);await click('Document tab '+d.title);await page.waitForFunction(id=>globalThis.designSpaceDiagnostics.workspace.active===id,id);}
+  await check('cancelled browser upload cleans up without document changes',async()=>{
+    const before=await snapshot(),pending=page.waitForEvent('filechooser');await click('Open design');await(await pending).setFiles([]);
+    await page.waitForFunction(()=>!globalThis.designSpaceDiagnostics.workspace.busy);await settle();const after=await snapshot();assert.equal(after.revision,before.revision);assert.equal(after.workspace.documents.length,before.workspace.documents.length);assert.equal(await page.locator('input[data-designspace-upload]').count(),0);
+  });
+  await check('oversized browser upload is rejected before decoding',async()=>{
+    const before=await snapshot(),pending=page.waitForEvent('filechooser');await click('Open design');await(await pending).setFiles({name:'TooLarge.xaml',mimeType:'text/plain',buffer:Buffer.alloc(8*1024*1024+1,32)});
+    await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.status.includes('file size limit'));const s=await snapshot();assert.equal(s.revision,before.revision);assert.equal(s.workspace.documents.length,before.workspace.documents.length);assert.equal(await page.locator('input[data-designspace-upload]').count(),0);
+  });
   await check('timed spline animation imports into an isolated document',async()=>{
     const count=(await snapshot()).workspace.documents.length,pending=page.waitForEvent('filechooser');await click('Open design');await(await pending).setFiles({name:'MotionStudy.xaml',mimeType:'text/plain',buffer:Buffer.from(fixture)});
     await page.waitForFunction(count=>globalThis.designSpaceDiagnostics.workspace.documents.length===count+1&&globalThis.designSpaceDiagnostics.nodes.some(n=>n.name==='OpacityTarget'),count);

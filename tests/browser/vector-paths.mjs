@@ -100,6 +100,4 @@ export async function vectorPaths({page,snapshot,click,check,directory}) {
   await strokes({page,snapshot,click,check,directory});
   const {brushes}=await import('./brushes.mjs');
   await brushes({page,snapshot,click,check,directory});
-  const {animationTracks}=await import('./animation-tracks.mjs');
-  await animationTracks({page,snapshot,click,check,directory});
 }
