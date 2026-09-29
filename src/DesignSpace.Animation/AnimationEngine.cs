@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using DesignSpace.Core;
 namespace DesignSpace.Animation;
 
-public static class AnimationEngine
+public static partial class AnimationEngine
 {
     public static readonly string[] Properties=["Canvas.Left","Canvas.Top","Width","Height","Opacity","Rotation"];
     private static readonly ConditionalWeakTable<AnimationTrack,AnimationKey[]> SortedKeys=new();
@@ -26,7 +26,7 @@ public static class AnimationEngine
         };
     }
     /// <summary>Evaluates in the track's own keyframe time; parent clock mapping is deliberately separate.</summary>
-    public static double Evaluate(AnimationTrack track,double time,double baseValue,AnimationSamplingContext? context=null)
+    private static double EvaluateKeys(AnimationTrack track,double time,double baseValue,AnimationSamplingContext? context)
     {
         if(!double.IsFinite(time)||!double.IsFinite(baseValue))throw new ArgumentOutOfRangeException(nameof(time));
         if(track.Keys.IsEmpty)return baseValue;
@@ -66,7 +66,7 @@ public static class AnimationEngine
                 var values=Values(track.TargetId);
                 var baseline=track.Property=="Rotation"?node.Rotation:node.Number(track.Property,track.Property=="Opacity"?1:0);
                 if(values.TryGetValue(track.Property,out var stateValue))baseline=Numbers.Parse(stateValue,baseline);
-                values[track.Property]=Evaluate(track,sample.LocalTime,baseline,context).ToString("R",System.Globalization.CultureInfo.InvariantCulture);
+                values[track.Property]=EvaluateIteration(track,sample.LocalTime,baseline,sample.CurrentIteration,context).ToString("R",System.Globalization.CultureInfo.InvariantCulture);
             }
         }
         return DesignTree.SetProperties(root,changes,replacePropertyElements:true);

@@ -46,7 +46,11 @@ internal static class XamlAnimationCodec
             if(!simple&&animation.Name!=Ns+"DoubleAnimationUsingKeyFrames")return false;
             var allowed=TimingAttributes.Concat(new[]{"Storyboard.TargetName","Storyboard.TargetProperty","EnableDependentAnimation"});
             if(simple)allowed=allowed.Concat(new[]{"From","To"});
+            else allowed=allowed.Concat(new[]{"IsAdditive","IsCumulative"});
             if(!Attributes(animation,allowed.ToArray()))return false;
+            var additive=false;var cumulative=false;
+            if(animation.Attribute("IsAdditive") is { } add&&!bool.TryParse(add.Value,out additive))return false;
+            if(animation.Attribute("IsCumulative") is { } sum&&!bool.TryParse(sum.Value,out cumulative))return false;
             if(animation.Attribute("EnableDependentAnimation") is { } dependent&&!bool.TryParse(dependent.Value,out _))return false;
             var target=(string?)animation.Attribute("Storyboard.TargetName");var property=ReadProperty((string?)animation.Attribute("Storyboard.TargetProperty")??"");
             if(target is null||!names.TryGetValue(target,out var node)||!Properties.Contains(property)||tracks.Any(t=>t.TargetId==node.Id&&t.Property==property))return false;
@@ -122,7 +126,7 @@ internal static class XamlAnimationCodec
             if(keys.Count==0||keys.GroupBy(k=>k.Time).Any(g=>g.Count()>1)||keys.Any(k=>k.Time>childDuration)||!TryTiming(animation,childDuration,out var timing))return false;
             var end=timing.Loop?double.PositiveInfinity:timing.BeginTime+(timing.RepeatDuration??timing.Duration*(timing.AutoReverse?2:1)*timing.RepeatCount)/timing.SpeedRatio;
             naturalDuration=Math.Max(naturalDuration,end);
-            tracks.Add(new(node.Id,property,keys.ToImmutable()){Timing=timing});
+            tracks.Add(new(node.Id,property,keys.ToImmutable()){Timing=timing,IsAdditive=additive,IsCumulative=cumulative});
         }
         // A finite parent may clip a repeating/longer child; Automatic + infinite child cannot be represented by a finite ruler.
         if(!explicitDuration&&!double.IsFinite(naturalDuration))return false;
@@ -156,6 +160,8 @@ internal static class XamlAnimationCodec
             var target=nodes[track.TargetId];if(target.Get(DesignNode.NameKey,target.Get("Name")).Length==0)throw new InvalidDataException("Animation targets must have explicit XAML names.");
             var animation=new XElement(Ns+"DoubleAnimationUsingKeyFrames",new XAttribute("Storyboard.TargetName",target.Name),new XAttribute("Storyboard.TargetProperty",WriteProperty(track.Property)));
             WriteTiming(animation,track.Timing??new TrackTiming(board.Duration));
+            if(track.IsAdditive)animation.SetAttributeValue("IsAdditive","True");
+            if(track.IsCumulative)animation.SetAttributeValue("IsCumulative","True");
             if(track.Property is "Canvas.Left" or "Canvas.Top" or "Width" or "Height")animation.SetAttributeValue("EnableDependentAnimation","True");
             foreach(var key in track.Keys.OrderBy(k=>k.Time))
             {

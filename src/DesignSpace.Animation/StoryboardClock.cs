@@ -2,7 +2,11 @@ using DesignSpace.Core;
 namespace DesignSpace.Animation;
 
 /// <summary>A sampled clock; LocalTime is relative to this clock's own keyframe interval.</summary>
-public readonly record struct StoryboardClockSample(double LocalTime,bool Applies,bool IsCompleted);
+public readonly record struct StoryboardClockSample(double LocalTime,bool Applies,bool IsCompleted)
+{
+    /// <summary>One-based count of complete forward/reverse cycles. A parent repeat restarts its children.</summary>
+    public double CurrentIteration { get; init; }=1;
+}
 
 /// <summary>Deterministic parent and child timing. Sampling never mutates a document or starts a timer.</summary>
 public static class StoryboardClock
@@ -43,8 +47,9 @@ public static class StoryboardClock
         var position=completed?activeDuration:(elapsed-begin)*speed;
         if(!double.IsFinite(position))throw new ArgumentOutOfRangeException(nameof(elapsed),"Clock time overflowed.");
         var offset=position%cycle;
-        if(completed&&position>0&&Math.Abs(offset)<=cycle*1e-12)offset=cycle;
+        var iteration=Math.Floor(position/cycle)+1;
+        if(completed&&position>0&&Math.Abs(offset)<=cycle*1e-12){offset=cycle;iteration=Math.Max(1,iteration-1);}
         var local=reverse?Math.Min(offset,cycle-offset):Math.Min(offset,duration);
-        return new(Math.Clamp(local,0,duration),true,completed);
+        return new(Math.Clamp(local,0,duration),true,completed){CurrentIteration=iteration};
     }
 }
