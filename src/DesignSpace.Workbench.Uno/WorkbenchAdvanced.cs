@@ -17,6 +17,7 @@ public sealed partial class WorkbenchView
     private TemplateEditorControl? _templateEditor;
     private StrokeEditorControl? _strokeEditor;
     private BrushEditorControl? _brushEditor;
+    private AnimationTrackInspectorControl? _animationTrackEditor;
     private StateTransitionEditorControl? _stateTransitions;
     private StoryboardInspectorControl? _storyboardInspector;
     private LayoutAuthoringControl? _layoutAuthoring;
@@ -28,6 +29,7 @@ public sealed partial class WorkbenchView
         _templateEditor=new(Session);_templateEditor.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Templates",_templateEditor);
         _storyboardInspector=new(Session,Timeline);_storyboardInspector.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Timing",_storyboardInspector);
         Timeline.SettingsRequested+=OpenTiming;
+        _animationTrackEditor=new(Session,Timeline);_animationTrackEditor.Error+=(_,message)=>SetStatus(message,true);_rightTabs.Add("Animation",_animationTrackEditor);Timeline.TrackSettingsRequested+=OpenAnimationTrack;
         _stateTransitions=new(Session,States);_rightTabs.Add("Transitions",_stateTransitions);States.TransitionEditorRequested+=OpenTransitions;
         _rightTabs.Add("Paths",new PathToolsControl(Designer));
         _strokeEditor=new(Session){CanEditBase=()=>!States.IsRecording&&!Timeline.IsRecording};
@@ -40,6 +42,7 @@ public sealed partial class WorkbenchView
         var toolbar=_mainToolbar;
         if(toolbar is not null)
         {
+            toolbar.Children.Add(new StudioButton("Animation",()=>_rightTabs.Select("Animation"),"Open Animation panel"));
             toolbar.Children.Add(new StudioButton("Brush",()=>_rightTabs.Select("Brush"),"Open Brush panel"));
             toolbar.Children.Add(new StudioButton("Stroke",()=>_rightTabs.Select("Stroke"),"Open Stroke panel"));
             toolbar.Children.Add(new StudioButton("Transitions",()=>_rightTabs.Select("Transitions"),"Open Transitions panel"));
@@ -50,12 +53,13 @@ public sealed partial class WorkbenchView
         }
         Designer.InvalidateLayout();
     }
+    private void OpenAnimationTrack(object? sender,EventArgs args)=>_rightTabs.Select("Animation");
     private void OpenTiming(object? sender,EventArgs args)=>_rightTabs.Select("Timing");
     private void OpenTransitions(object? sender,EventArgs args)=>_rightTabs.Select("Transitions");
     private void StopAnimationForEditing(object? sender,EventArgs args){States.StopTransitions(false);Timeline.Stop();}
     public void DisposeAdvancedTools()
     {
-        _brushEditor?.Dispose();_strokeEditor?.Dispose();States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
+        Timeline.TrackSettingsRequested-=OpenAnimationTrack;_animationTrackEditor?.Dispose();_brushEditor?.Dispose();_strokeEditor?.Dispose();States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
     }
     public async Task ImportImageAsync()
     {
