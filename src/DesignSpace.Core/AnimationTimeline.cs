@@ -77,10 +77,12 @@ public static class AnimationValidation
     {
         if(key is null||!double.IsFinite(key.Time)||!double.IsFinite(key.Value)||key.Time<0||key.Time>duration)
             throw new InvalidDataException("Invalid animation keyframe.");
-        if(key.Easing is not ("Linear" or "Discrete" or "EaseIn" or "EaseOut" or "EaseInOut" or "Spline"))
+        if(key.Easing is not ("Linear" or "Discrete" or "EaseIn" or "EaseOut" or "EaseInOut" or "Spline" or "Function"))
             throw new InvalidDataException("Unsupported keyframe easing.");
         if((key.Easing=="Spline")!=(key.Spline is not null))throw new InvalidDataException("Spline easing requires its control points; other easing modes must not contain a spline.");
         key.Spline?.Validate();
+        if((key.Easing=="Function")!=(key.Function is not null))throw new InvalidDataException("Function easing requires its parameters; other modes must not contain an easing function.");
+        key.Function?.Validate();
     }
     public static void ValidateTrack(AnimationTrack track,double parentDuration)
     {

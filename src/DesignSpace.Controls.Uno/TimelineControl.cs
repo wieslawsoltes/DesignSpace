@@ -25,7 +25,7 @@ public sealed partial class TimelineControl : Grid,IDisposable
     private readonly ComboBox _boards=new() { MinWidth=110,MinHeight=24,FontSize=11,Padding=new Thickness(5,1,5,1),Background=StudioTheme.Field };
     private readonly StudioButton _record;
     private readonly TextBlock _timeText=StudioTheme.Text("0:00.000",11,"#E6B36D");
-    private readonly ComboBox _easing=new() { ItemsSource=new[]{"Linear","EaseIn","EaseOut","EaseInOut","Discrete","Spline"},SelectedIndex=0,MinWidth=95,MinHeight=24,FontSize=11,Padding=new Thickness(4,1,4,1),Background=StudioTheme.Field };
+    private readonly ComboBox _easing=new() { ItemsSource=new[]{"Linear","EaseIn","EaseOut","EaseInOut","Discrete","Spline","Function"},SelectedIndex=0,MinWidth=95,MinHeight=24,FontSize=11,Padding=new Thickness(4,1,4,1),Background=StudioTheme.Field };
     private Guid? _boardId; private bool _refreshing; private bool _playing; private bool _dragging;
     private readonly Stopwatch _clock=new(); private double _startTime; private double _scale=160;
     private (Guid Target,string Property,double Time)? _key;
@@ -74,7 +74,7 @@ public sealed partial class TimelineControl : Grid,IDisposable
             try
             {
                 if(_session.Index.IsLocked(key.Target))throw new InvalidOperationException("The animation target is locked.");
-                var k=SelectedKey;if(k is not null)ReplaceBoard(AnimationEngine.SetKey(board,key.Target,key.Property,key.Time,k.Value,_easing.SelectedItem as string??"Linear",k.Spline),"Change keyframe easing");
+                var k=SelectedKey;if(k is not null)ReplaceBoard(AnimationEngine.SetKey(board,key.Target,key.Property,key.Time,k.Value,_easing.SelectedItem as string??"Linear",k.Spline,k.Function),"Change keyframe easing");
             }
             catch(Exception e){Error?.Invoke(this,e.Message);}
         };

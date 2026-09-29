@@ -18,13 +18,15 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
     private readonly TextBlock _title=StudioTheme.Text("",12);
     private readonly Dictionary<string,TextBox> _fields=[];
     private readonly ComboBox _keys=new(){MinHeight=25,FontSize=11};
-    private readonly ComboBox _easing=new(){ItemsSource=new[]{"Linear","EaseIn","EaseOut","EaseInOut","Discrete","Spline"},SelectedItem="Linear",MinHeight=25,FontSize=11};
+    private readonly ComboBox _easing=new(){ItemsSource=new[]{"Linear","EaseIn","EaseOut","EaseInOut","Discrete","Spline","Function"},SelectedItem="Linear",MinHeight=25,FontSize=11};
     private readonly ComboBox _repeat=new(){ItemsSource=new[]{"Count","Duration","Forever"},SelectedItem="Count",MinHeight=25,FontSize=11};
     private readonly ComboBox _fill=new(){ItemsSource=new[]{"HoldEnd","Stop"},SelectedItem="HoldEnd",MinHeight=25,FontSize=11};
     private readonly CheckBox _independent=new(){Content="Independent track clock",MinHeight=25};
     private readonly CheckBox _reverse=new(){Content="Auto reverse",MinHeight=25};
     private readonly CheckBox _scale=new(){Content="Scale track keys",MinHeight=25};
     private readonly KeySplineEditorControl _curve=new();
+    private readonly EasingFunctionEditorControl _function=new();
+    private readonly StackPanel _splinePresets=new(){Orientation=Orientation.Horizontal};
     private readonly TextBox _previewTime=StudioTheme.Input("0","Animation preview time");
     private ImmutableDictionary<string,string> _original=ImmutableDictionary<string,string>.Empty;
     private DesignStoryboard? _board;
@@ -53,10 +55,11 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
         AutomationProperties.SetName(_reverse,"Animation auto reverse");body.Children.Add(_reverse);Choice("Fill behavior",_fill);
         AutomationProperties.SetName(_scale,"Scale track keys");body.Children.Add(_scale);
         Choice("Key",_keys);Field("Key time","0");Field("Value","0");Choice("Easing",_easing);Field("Key spline","0,0 1,1");body.Children.Add(_curve);
-        var presets=new StackPanel{Orientation=Orientation.Horizontal};
+        var presets=_splinePresets;
         foreach(var (name,text) in new[]{("Linear","0,0 1,1"),("Ease in","0.42,0 1,1"),("Ease out","0,0 0.58,1"),("Ease both","0.42,0 0.58,1")})
             presets.Children.Add(new StudioButton(name,()=>{_syncing=true;_easing.SelectedItem="Spline";_fields["Key spline"].Text=text;_syncing=false;DraftChanged();},"Spline preset "+name));
-        body.Children.Add(presets);
+        body.Children.Add(presets);body.Children.Add(_function);
+        _function.DraftChanged+=(_,_)=>DraftChanged();
         // Keep preview actions fixed while the key/clock inspector scrolls. They never alter a draft.
         var preview=new Grid{ColumnSpacing=4,Padding=new Thickness(8,2,8,2)};
         preview.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
@@ -93,14 +96,25 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
     private static double Read(string text)=>double.TryParse(text,NumberStyles.Float,CultureInfo.InvariantCulture,out var value)&&double.IsFinite(value)?value:throw new InvalidDataException("Enter a finite animation value.");
     private ImmutableDictionary<string,string> Fields()=>_fields.ToImmutableDictionary(p=>p.Key,p=>p.Value.Text)
         .Add("Independent",(_independent.IsChecked==true).ToString()).Add("Reverse",(_reverse.IsChecked==true).ToString()).Add("Scale",(_scale.IsChecked==true).ToString())
-        .Add("Repeat mode",_repeat.SelectedItem as string??"Count").Add("Fill behavior",_fill.SelectedItem as string??"HoldEnd").Add("Easing",_easing.SelectedItem as string??"Linear");
+        .Add("Repeat mode",_repeat.SelectedItem as string??"Count").Add("Fill behavior",_fill.SelectedItem as string??"HoldEnd").Add("Easing",_easing.SelectedItem as string??"Linear").AddRange(_function.CaptureDraft());
     private void SetFields(IReadOnlyDictionary<string,string> values)
     {
+        _function.RestoreDraft(values);
         foreach(var pair in _fields)if(values.TryGetValue(pair.Key,out var text))pair.Value.Text=text;
         _independent.IsChecked=values.GetValueOrDefault("Independent")=="True";_reverse.IsChecked=values.GetValueOrDefault("Reverse")=="True";_scale.IsChecked=values.GetValueOrDefault("Scale")=="True";
         _repeat.SelectedItem=values.GetValueOrDefault("Repeat mode","Count");_fill.SelectedItem=values.GetValueOrDefault("Fill behavior","HoldEnd");_easing.SelectedItem=values.GetValueOrDefault("Easing","Linear");
     }
-    private void Changed(object? sender,EventArgs e){if(!_syncing&&!_applying)Reload();}
+    private void Changed(object? sender,EventArgs e)
+    {
+        if(_syncing||_applying)return;
+        var track=_timeline.SelectedTrack;
+        var key=_timeline.SelectedKey??track?.Keys.OrderBy(k=>k.Time).LastOrDefault();
+        // Saving only changes the dirty marker, not the animation. Keep the live
+        // editors and their scroll/focus state instead of resetting all fields.
+        if(_revision==_session.Revision&&ReferenceEquals(_board,_timeline.ActiveStoryboard)&&
+           ReferenceEquals(_track,track)&&_selectedKey==key?.Time)return;
+        Reload();
+    }
     private void Reload(bool discard=false)
     {
         if(!discard&&Dirty){_status.Text="Animation draft retained. Apply to its original revision or Reload.";return;}
@@ -114,7 +128,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
                 {"Repeat amount",(t.RepeatDuration??t.RepeatCount).ToString("R",CultureInfo.InvariantCulture)},{"Independent",(_track?.Timing is not null).ToString()},{"Reverse",t.AutoReverse.ToString()},{"Scale","False"},
                 {"Repeat mode",t.Loop?"Forever":t.RepeatDuration is not null?"Duration":"Count"},{"Fill behavior",t.FillBehavior},{"Key time",(key?.Time??0).ToString("R",CultureInfo.InvariantCulture)},
                 {"Value",(key?.Value??0).ToString("R",CultureInfo.InvariantCulture)},{"Easing",key?.Easing??"Linear"},{"Key spline",(key?.Spline??KeySpline.Linear).ToXaml()}};
-            SetFields(values);_keys.ItemsSource=_track?.Keys.OrderBy(k=>k.Time).Select(k=>k.Time.ToString("R",CultureInfo.InvariantCulture)).ToArray()??[];_keys.SelectedItem=_selectedKey?.ToString("R",CultureInfo.InvariantCulture);
+            SetFields(values);_function.SetCurve(key?.Function??new(EasingFamily.Cubic,Enum.TryParse<EasingDirection>(key?.Easing,out var direction)?direction:EasingDirection.EaseOut));_keys.ItemsSource=_track?.Keys.OrderBy(k=>k.Time).Select(k=>k.Time.ToString("R",CultureInfo.InvariantCulture)).ToArray()??[];_keys.SelectedItem=_selectedKey?.ToString("R",CultureInfo.InvariantCulture);
             _original=Fields();_status.Text=_track is null?"Create or select a numeric animation track first.":"Track and key values synchronized";
         }
         finally{_syncing=false;UpdateCurve();}
@@ -122,7 +136,12 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
     private void DraftChanged(){if(_syncing)return;_status.Text=Dirty?"Unapplied animation draft":"Track and key values synchronized";UpdateCurve();}
     private void UpdateCurve()
     {
+        var function=_easing.SelectedItem as string=="Function";
+        _function.Visibility=function?Visibility.Visible:Visibility.Collapsed;
+        _curve.Visibility=_splinePresets.Visibility=function?Visibility.Collapsed:Visibility.Visible;
+        if(_fields["Key spline"].Parent is FrameworkElement row)row.Visibility=function?Visibility.Collapsed:Visibility.Visible;
         _fields["Key spline"].IsEnabled=_easing.SelectedItem as string=="Spline";
+        if(function)return;
         try{_curve.Curve=KeySpline.Parse(_fields["Key spline"].Text);}catch(Exception e)when(e is InvalidDataException or FormatException or OverflowException){_status.Text=e.Message;}
     }
     public void Apply()
@@ -143,7 +162,7 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
                 if(keyTime<0||keyTime>(timing?.Duration??_board.Duration))throw new InvalidDataException("Key time is outside the track interval.");
                 updated=AnimationEngine.MoveKey(updated,_track.TargetId,_track.Property,scaledTime,keyTime.Value);
                 var easing=_easing.SelectedItem as string??"Linear";
-                updated=AnimationEngine.SetKey(updated,_track.TargetId,_track.Property,keyTime.Value,Read(_fields["Value"].Text),easing,easing=="Spline"?KeySpline.Parse(_fields["Key spline"].Text):null);
+                updated=AnimationEngine.SetKey(updated,_track.TargetId,_track.Property,keyTime.Value,Read(_fields["Value"].Text),easing,easing=="Spline"?KeySpline.Parse(_fields["Key spline"].Text):null,easing=="Function"?_function.ReadCurve():null);
             }
             _applying=true;
             try
@@ -172,12 +191,15 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
             _track=Guid.TryParse(state.Values.GetValueOrDefault("Target"),out var target)?_board?.Tracks.FirstOrDefault(t=>t.TargetId==target&&t.Property==state.Values.GetValueOrDefault("Property")):null;
             _selectedKey=double.TryParse(state.Values.GetValueOrDefault("Selected key"),NumberStyles.Float,CultureInfo.InvariantCulture,out var key)?key:null;
             SetFields(state.Values);_keys.ItemsSource=_track?.Keys.OrderBy(k=>k.Time).Select(k=>k.Time.ToString("R",CultureInfo.InvariantCulture)).ToArray()??[];_keys.SelectedItem=_selectedKey?.ToString("R",CultureInfo.InvariantCulture);
-            _original=state.Originals;_revision=state.MatchesDesign?_session.Revision:-1;
+            _original=state.Originals;
+            // Earlier saved drafts predate the function fields; their defaults are not new edits.
+            foreach(var pair in _function.CaptureDraft())if(!_original.ContainsKey(pair.Key))_original=_original.Add(pair.Key,pair.Value);
+            _revision=state.MatchesDesign?_session.Revision:-1;
             if(_board is null||_track is null)_orphan=state with{MatchesDesign=false};
             _title.Text=_track is null?"Missing animation target":(_session.Index.Find(_track.TargetId)?.Name??"?")+" · "+_track.Property;
             _status.Text=_orphan is null?"Retained animation draft for this document":"Missing track draft retained; Reload discards it.";
         }
         finally{_syncing=false;UpdateCurve();}
     }
-    public void Dispose(){_session.DocumentChanged-=Changed;_timeline.AnimationSelectionChanged-=Changed;_timeline.SelectedStoryboardChanged-=Changed;}
+    public void Dispose(){_function.Dispose();_session.DocumentChanged-=Changed;_timeline.AnimationSelectionChanged-=Changed;_timeline.SelectedStoryboardChanged-=Changed;}
 }

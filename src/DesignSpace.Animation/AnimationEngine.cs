@@ -12,19 +12,30 @@ public static class AnimationEngine
         "Discrete"=>t>=1?1:0,"EaseIn"=>t*t*t,"EaseOut"=>1-Math.Pow(1-t,3),
         "EaseInOut"=>t<.5?4*t*t*t:1-Math.Pow(-2*t+2,3)/2,_=>t
     };
-    private static double Ease(double progress,AnimationKey key,AnimationSamplingContext? context)=>key.Easing=="Spline"
-        ? context?.Sample(key,progress) ?? (key.Spline??throw new InvalidDataException("Missing KeySpline.")).Evaluate(progress) : Ease(progress,key.Easing);
+    private static double Ease(double progress,AnimationKey key,AnimationSamplingContext? context)
+    {
+        // A first positive-time key evaluates its easing at progress zero: Power=0
+        // deliberately jumps. Exact key arrivals are handled by Evaluate, not here.
+        if(progress>=1)return 1;
+        if(progress<=0&&key.Easing!="Function")return 0;
+        return key.Easing switch
+        {
+            "Spline"=>context?.Sample(key,progress)??(key.Spline??throw new InvalidDataException("Missing KeySpline.")).Evaluate(progress),
+            "Function"=>(key.Function??throw new InvalidDataException("Missing easing function.")).Evaluate(progress),
+            _=>Ease(progress,key.Easing)
+        };
+    }
     /// <summary>Evaluates in the track's own keyframe time; parent clock mapping is deliberately separate.</summary>
     public static double Evaluate(AnimationTrack track,double time,double baseValue,AnimationSamplingContext? context=null)
     {
         if(!double.IsFinite(time)||!double.IsFinite(baseValue))throw new ArgumentOutOfRangeException(nameof(time));
         if(track.Keys.IsEmpty)return baseValue;
         var keys=SortedKeys.GetValue(track,t=>t.Keys.OrderBy(k=>k.Time).ToArray());
-        if(time<=keys[0].Time)return keys[0].Time<=0?keys[0].Value:baseValue+(keys[0].Value-baseValue)*Ease(Math.Clamp(time/keys[0].Time,0,1),keys[0],context);
+        if(time<=keys[0].Time)return time==keys[0].Time||keys[0].Time<=0?keys[0].Value:baseValue+(keys[0].Value-baseValue)*Ease(Math.Clamp(time/keys[0].Time,0,1),keys[0],context);
         var low=1;var high=keys.Length;
         while(low<high){var mid=(low+high)/2;if(keys[mid].Time<=time)low=mid+1;else high=mid;}
         if(low==keys.Length)return keys[^1].Value;
-        var a=keys[low-1];var b=keys[low];return a.Value+(b.Value-a.Value)*Ease((time-a.Time)/(b.Time-a.Time),b,context);
+        var a=keys[low-1];var b=keys[low];if(time==a.Time)return a.Value;return a.Value+(b.Value-a.Value)*Ease((time-a.Time)/(b.Time-a.Time),b,context);
     }
     /// <summary>Maps elapsed time through the parent clock, then through every independently timed child.</summary>
     public static DesignNode Evaluate(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null,AnimationSamplingContext? context=null)
@@ -67,14 +78,14 @@ public static class AnimationEngine
         return -1;
     }
     /// <summary>Adds/replaces a key in child-local time, preserving timing and any existing spline on value-only edits.</summary>
-    public static DesignStoryboard SetKey(DesignStoryboard board,Guid target,string property,double time,double value,string easing="Linear",KeySpline? spline=null)
+    public static DesignStoryboard SetKey(DesignStoryboard board,Guid target,string property,double time,double value,string easing="Linear",KeySpline? spline=null,EasingCurve? function=null)
     {
         if(!Properties.Contains(property))throw new ArgumentException("This property does not support numeric animation.");
         if(!double.IsFinite(time)||!double.IsFinite(value))throw new ArgumentException("Keyframe time and value must be finite.");
         var position=TrackIndex(board,target,property);var track=position<0?new AnimationTrack(target,property,[]):board.Tracks[position];
         time=Math.Clamp(time,0,track.Timing?.Duration??board.Duration);
         var old=track.Keys.FirstOrDefault(k=>Math.Abs(k.Time-time)<.00001);
-        var key=new AnimationKey(time,value,easing){Spline=easing=="Spline"?spline??old?.Spline??KeySpline.Linear:null};
+        var key=new AnimationKey(time,value,easing){Spline=easing=="Spline"?spline??old?.Spline??KeySpline.Linear:null,Function=easing=="Function"?function??old?.Function??new(EasingFamily.Cubic):null};
         AnimationValidation.ValidateKey(key,track.Timing?.Duration??board.Duration);
         if(old==key)return board;
         track=track with{Keys=track.Keys.Where(k=>Math.Abs(k.Time-time)>.00001).Append(key).OrderBy(k=>k.Time).ToImmutableArray()};

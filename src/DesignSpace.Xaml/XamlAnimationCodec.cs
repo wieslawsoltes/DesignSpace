@@ -57,9 +57,21 @@ internal static class XamlAnimationCodec
             var keys=ImmutableArray.CreateBuilder<AnimationKey>();
             if(simple)
             {
-                if(animation.HasElements||!Number((string?)animation.Attribute("To"),out var to))return false;
+                if(!Number((string?)animation.Attribute("To"),out var to))return false;
+                EasingCurve? function=null;
+                if(animation.HasElements)
+                {
+                    var wrappers=animation.Elements().ToArray();
+                    if(wrappers.Length!=1||wrappers[0].Name!=Ns+"DoubleAnimation.EasingFunction"||!Attributes(wrappers[0]))return false;
+                    var functions=wrappers[0].Elements().ToArray();
+                    if(functions.Length!=1||!EasingCurveCodec.TryRead(functions[0],out function))return false;
+                }
+                // Simple DoubleAnimation evaluates the function at its clock endpoints;
+                // keyframe tracks instead honor explicit key arrivals. Preserve discontinuous
+                // functions (for example Power=0) rather than changing those semantics.
+                if(function is not null&&(Math.Abs(function.Evaluate(0))>1e-12||Math.Abs(function.Evaluate(1)-1)>1e-12))return false;
                 if(animation.Attribute("From") is { } fromText){if(!Number(fromText.Value,out var from))return false;keys.Add(new(0,from));}
-                keys.Add(new(childDuration,to));
+                keys.Add(CurveKey(childDuration,to,function));
             }
             else
             {
@@ -76,13 +88,17 @@ internal static class XamlAnimationCodec
                     }
                     else time=ParseTime(keyText,-1);
                     if(time<0||!Number((string?)key.Attribute("Value"),out var value))return false;
-                    var easing=kind=="DiscreteDoubleKeyFrame"?"Discrete":"Linear";KeySpline? spline=null;
+                    var easing=kind=="DiscreteDoubleKeyFrame"?"Discrete":"Linear";KeySpline? spline=null;EasingCurve? function=null;
                     if(kind=="EasingDoubleKeyFrame")
                     {
-                        var wrappers=key.Elements().ToArray();if(wrappers.Length!=1||wrappers[0].Name!=Ns+"EasingDoubleKeyFrame.EasingFunction"||!Attributes(wrappers[0]))return false;
-                        var elements=wrappers[0].Elements().ToArray();if(elements.Length!=1)return false;var ease=elements[0];
-                        if(ease.Name!=Ns+"CubicEase"||!Attributes(ease,"EasingMode")||ease.HasElements)return false;
-                        easing=(string?)ease.Attribute("EasingMode")??"EaseOut";if(easing is not ("EaseIn" or "EaseOut" or "EaseInOut"))return false;
+                        if(key.HasElements)
+                        {
+                            var wrappers=key.Elements().ToArray();if(wrappers.Length!=1||wrappers[0].Name!=Ns+"EasingDoubleKeyFrame.EasingFunction"||!Attributes(wrappers[0]))return false;
+                            var elements=wrappers[0].Elements().ToArray();if(elements.Length!=1||!EasingCurveCodec.TryRead(elements[0],out function))return false;
+                            // Keep the legacy cubic aliases readable in existing version-1 documents.
+                            if(function!.Family==EasingFamily.Cubic){easing=function.Mode.ToString();function=null;}
+                            else easing="Function";
+                        }
                     }
                     else if(kind=="SplineDoubleKeyFrame")
                     {
@@ -98,7 +114,7 @@ internal static class XamlAnimationCodec
                         try{spline=raw is null?KeySpline.Linear:KeySpline.Parse(raw);}catch(Exception e)when(e is FormatException or OverflowException or InvalidDataException){return false;}
                     }
                     else if(key.HasElements)return false;
-                    keys.Add(new(time,value,easing){Spline=spline});
+                    keys.Add(new(time,value,easing){Spline=spline,Function=function});
                 }
                 if(!fixedChild)childDuration=keys.Select(k=>k.Time).DefaultIfEmpty(0).Max();
                 if(childDuration<=0)childDuration=1;
@@ -116,6 +132,8 @@ internal static class XamlAnimationCodec
         {AutoReverse=parent.AutoReverse,BeginTime=parent.BeginTime,SpeedRatio=parent.SpeedRatio,RepeatCount=parent.RepeatCount,RepeatDuration=parent.RepeatDuration,FillBehavior=parent.FillBehavior};
         return true;
     }
+    private static AnimationKey CurveKey(double time,double value,EasingCurve? curve)=>curve is null?new(time,value):
+        curve.Family==EasingFamily.Cubic?new(time,value,curve.Mode.ToString()):new(time,value,"Function"){Function=curve};
     private static void WriteTiming(XElement element,TrackTiming timing)
     {
         element.SetAttributeValue("Duration",Time(timing.Duration));
@@ -144,7 +162,7 @@ internal static class XamlAnimationCodec
                 var kind=key.Easing switch{"Discrete"=>"DiscreteDoubleKeyFrame","Linear"=>"LinearDoubleKeyFrame","Spline"=>"SplineDoubleKeyFrame",_=>"EasingDoubleKeyFrame"};
                 var k=new XElement(Ns+kind,new XAttribute("KeyTime",Time(key.Time)),new XAttribute("Value",key.Value.ToString("R",CultureInfo.InvariantCulture)));
                 if(kind=="SplineDoubleKeyFrame")k.SetAttributeValue("KeySpline",key.Spline!.ToXaml());
-                if(kind=="EasingDoubleKeyFrame")k.Add(new XElement(Ns+"EasingDoubleKeyFrame.EasingFunction",new XElement(Ns+"CubicEase",new XAttribute("EasingMode",key.Easing))));
+                if(kind=="EasingDoubleKeyFrame")k.Add(new XElement(Ns+"EasingDoubleKeyFrame.EasingFunction",key.Function is { } function?EasingCurveCodec.Write(function):new XElement(Ns+"CubicEase",new XAttribute("EasingMode",key.Easing))));
                 animation.Add(k);
             }
             sb.Add(animation);

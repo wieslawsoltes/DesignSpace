@@ -58,7 +58,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Keep an explicit supported Apple Silicon image rather than a moving alias.
+        os: [ubuntu-latest, windows-latest, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
@@ -80,5 +81,5 @@ jobs:
         if: always() && runner.os == 'Windows'
         with:
           name: wpf-animation-reference
-          path: artifacts/verification/wpf-animation-results.json
+          path: artifacts/verification/wpf-*-results.json
           if-no-files-found: warn
