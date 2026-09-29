@@ -31,7 +31,13 @@ export async function animationTracks({page,snapshot,click,check,directory}) {
     throw new Error(`Cannot reveal ${name}`);
   }
   async function press(name){const c=await reveal(name);await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2);await settle();}
-  async function edit(name,value){await press(name);await page.keyboard.press('Control+A');await page.keyboard.insertText(value);await page.keyboard.press('Tab');await settle();}
+  async function edit(name,value){
+    await press(name);
+    await page.waitForFunction(n=>globalThis.designSpaceDiagnostics.focus===n,name,{timeout:10000});
+    await page.keyboard.press('Control+A');await page.keyboard.insertText(value);
+    await page.waitForFunction(({name,value})=>globalThis.designSpaceDiagnostics.controls.find(c=>c.Name===name)?.Text===value,{name,value},{timeout:10000});
+    await page.keyboard.press('Tab');await settle();
+  }
   async function choose(name,index){await press(name);await page.keyboard.press('Home');for(let i=0;i<index;i++)await page.keyboard.press('ArrowDown');await page.keyboard.press('Enter');await settle();}
   async function editor(){await click('Open Animation panel');await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.controls.some(c=>c.Name==='Animation Duration'));}
   async function row(index){const c=(await snapshot()).controls.find(c=>c.Name==='Animation timeline');await page.mouse.click(c.X+45,c.Y+40+index*25);await settle();await editor();}
@@ -55,6 +61,17 @@ export async function animationTracks({page,snapshot,click,check,directory}) {
     const before=await snapshot();let s=await scrub(.5);assert.ok(Math.abs(preview(s,opacityId).opacity-.4)<.001);
     s=await scrub(2);assert.ok(Math.abs(preview(s,opacityId).opacity-.6)<.001);const slide=s.nodes.find(n=>n.name==='SlideTarget');assert.ok(Math.abs(preview(s,slide.id).x-330)<.001);assert.equal(s.revision,before.revision);
     const png=PNG.sync.read(await page.screenshot()),v=s.surface,x=Math.round(v.x+v.panX+131*v.zoom),y=Math.round(v.y+v.panY+151*v.zoom),i=(y*png.width+x)*4;assert.ok(png.data[i]>245&&Math.abs(png.data[i+1]-102)<12,'The animated opacity is painted');
+  });
+  await check('preview controls remain reachable while key details scroll',async()=>{
+    await reveal('Key spline curve');const s=await snapshot();
+    for(const name of ['Animation preview time','Scrub animation preview']){
+      const c=s.controls.find(c=>c.Name===name);assert.ok(c&&c.Y>110&&c.Y+c.Height<210,`Fixed preview control ${name}`);
+    }
+    const before=s.revision;await press('Animation preview time');
+    await page.waitForFunction(()=>globalThis.designSpaceDiagnostics.focus==='Animation preview time');
+    await page.keyboard.press('Control+A');await page.keyboard.insertText('1.5');await page.keyboard.press('Enter');
+    await page.waitForFunction(()=>Math.abs(globalThis.designSpaceDiagnostics.timeline.time-1.5)<1e-6);
+    assert.equal((await snapshot()).revision,before);
   });
   await check('track settings and spline preset commit as one transaction',async()=>{
     const before=await snapshot();await edit('Animation Begin','2');await edit('Animation Speed','2');await edit('Animation Repeat amount','2');await press('Animation auto reverse');await press('Spline preset Ease both');assert.equal((await snapshot()).revision,before.revision);const s=await apply(),t=track(s,opacityId);assert.equal(t.timing.begin,2);assert.equal(t.timing.speed,2);assert.equal(t.timing.count,2);assert.equal(t.timing.reverse,true);assert.equal(t.keys[1].spline,'0.42,0 0.58,1');assert.equal(s.sourceDirty,false);

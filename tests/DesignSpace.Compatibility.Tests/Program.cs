@@ -80,6 +80,7 @@ Test("state cannot rename an element",()=>{var d=Sample();Reject(()=>StateEditin
 Test("reset state property retains other setters",()=>{var d=Sample();var id=d.Storyboards[0].Tracks[0].TargetId;var updated=StateEditing.SetProperty(d,"Pressed",[id],"Opacity","0.3");var reset=StateEditing.RemoveProperty(updated,"Pressed",[id],"Opacity");Equal(1,reset.States.Single(s=>s.Name=="Pressed").Setters.Length);Check(ReferenceEquals(d.Root,reset.Root));});
 Test("state override supersedes inline brush without modifying source",()=>{var d=XamlCodec.Parse(Wrap("<Rectangle x:Name='R' Width='40' Height='40'><Rectangle.Fill><SolidColorBrush Color='Blue'/></Rectangle.Fill></Rectangle>")).Document;var id=d.Root.Children[0].Id;var root=AnimationEngine.EvaluateLocal(d.Root,null,0,new("State",[new(id,"Fill","Red")]));Equal("Red",root.Find(id)!.Get("Fill"));Equal(0,root.Find(id)!.PropertyElements.Length);Equal(1,d.Root.Children[0].PropertyElements.Length);});
 
+var sampling=DesignSpace.Compatibility.Tests.SplineSamplingTests.Run();passed+=sampling.Passed;failed+=sampling.Failed;
 var animation=AnimationTimelineTests.Run();passed+=animation.Passed;failed+=animation.Failed;
 var states=StateTransitionTests.Run();passed+=states.Passed;failed+=states.Failed;
 Console.WriteLine($"{passed} passed; {failed} failed.");return failed==0 ? 0 : 1;

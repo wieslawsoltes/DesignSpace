@@ -5,6 +5,7 @@ using DesignSpace.Xaml;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
 namespace DesignSpace.App;
 
@@ -41,9 +42,11 @@ internal sealed class BrowserDiagnostics : IDisposable
             }
             Walk(_view);
             if(_view.XamlRoot is not null)foreach(var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(_view.XamlRoot))if(popup.Child is { } content)Walk(content);
+            var focused=_view.XamlRoot is null ? null : FocusManager.GetFocusedElement(_view.XamlRoot) as DependencyObject;
             var snapshot=new
             {
                 workspace=new{active=_view.Workspace.ActiveDocumentId,profile=_view.WorkspaceProfile,orientation=_view.SplitOrientation,timelineHeight=_view.TimelineHeight,busy=_view.DocumentOperationPending,documents=_view.Workspace.Documents.Select(d=>new{id=d.Id,name=d.FileName,title=Path.GetFileNameWithoutExtension(d.FileName)+".xaml",dirty=d.IsDirty,pinned=d.IsPinned,sourceDraft=d.Editor.SourceDraft,nodes=d.Document.Root.DescendantsAndSelf().Count()}).ToArray()},
+                focus=focused is null ? null : AutomationProperties.GetName(focused),
                 ready=_view.IsReady,revision=_view.Session.Revision,dirty=_view.Session.IsDirty,mode=_view.Mode,status=_view.Status,
                 sourceDirty=_view.Source.IsDirty,sourceStatus=_view.Source.Status,width=_view.ActualWidth,height=_view.ActualHeight,controls,
                 surface=new{x=position.X,y=position.Y,width=designer.ActualWidth,height=designer.ActualHeight,zoom=designer.Viewport.Zoom,panX=designer.Viewport.PanX,panY=designer.Viewport.PanY},

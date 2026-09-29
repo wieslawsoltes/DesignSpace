@@ -10,9 +10,9 @@ Enable **Independent track clock** to set the track's Duration, Begin delay, Spe
 
 Key time and Value are edited in the child's own interval. Easing belongs to the destination key of each segment. Choose Spline and edit four control coordinates, use a preset, or drag either handle in the graph. The graph's endpoints remain `(0,0)` and `(1,1)`. The white midpoint indicates the output at half the elapsed segment time, not half the Bezier parameter. Pointer edits change only the draft until Apply.
 
-The **Preview parent time** field scrubs the actual artboard without changing source, history or the base document. Scrubbing bypasses the parent's delay/repeat settings but retains child timing. Playback uses both clock levels. Width/position changes still require normal design-time layout; the clock optimization does not bypass layout or render the complete application on a compute shader.
+The fixed **Time (s)** field and **Scrub** action remain accessible while the inspector scrolls. They scrub the actual artboard without changing source, history or the base document. Scrubbing bypasses the parent's delay/repeat settings but retains child timing. Playback uses both clock levels. Width/position changes still require normal design-time layout; the clock optimization does not bypass layout or render the complete application on a compute shader.
 
-Changing a child duration rejects keys outside its new interval unless **Scale track keys** is selected. Scaling preserves easing and control points. Scaling the parent retimes child delays, durations and repeat durations as well as key times; it does not multiply Speed or repeat counts. Shortening a parent without scaling can deliberately clip an explicit child without deleting its keys. Moving a track's sole key keeps its timing and spline metadata.
+Changing a child duration rejects keys outside its new interval unless **Scale track keys** is selected. Scaling preserves easing and control points. Scaling the parent retimes child delays, durations and repeat durations as well as key times; it does not multiply Speed or repeat counts. Shortening a parent without scaling can deliberately clip an explicit child without deleting its keys. Moving a track's sole key keeps its timing and spline metadata. Moving onto another key is rejected rather than silently deleting that key; explicit value replacement remains available through SetKey.
 
 ## Clock coordinates
 
@@ -56,6 +56,23 @@ var childClock = StoryboardClock.Sample(track.Timing, parentTime: 1.5);
 
 `ChangeTrackTiming`, `MoveKey`, `SetKey` and `ChangeDuration` return immutable storyboard replacements; commit them through the host's validated session transaction. Core contracts and clocks do not create timers or controls. The Uno `AnimationTrackInspectorControl` accepts a session and TimelineControl, while `KeySplineEditorControl` can be embedded by itself and reports draft changes through `CurveChanged`.
 
+## Exact and WPF-compatible spline sampling
+
+The default `KeySpline.Evaluate` and animation-engine overloads are deterministic: the same progress produces the same value regardless of previous samples. The workbench uses this exact mode. It does not implicitly maintain WPF's numerical history.
+
+WPF's native KeySpline implementation instead reuses the previous parameter guess and stops using its derivative-scaled numerical criterion. Near a stationary tangent, its output can differ from exact cubic inversion and depend on sample order. A fixed 0.003 progress tolerance is not a general bound for those cases. Do not call a stateless exact evaluator bitwise WPF-compatible solely because the curves look the same.
+
+For a host requiring the native numerical behavior, keep an explicit context for each playback:
+
+```csharp
+var context = new AnimationSamplingContext(SplineSamplingMode.WpfCompatible);
+var first = AnimationEngine.Evaluate(root, storyboard, time: 1.5, context: context);
+var next = AnimationEngine.Evaluate(root, storyboard, time: 1.6, context: context);
+context.Reset(); // Begin a new playback; a seek within playback normally retains its history.
+```
+
+`WpfKeySplineSampler` also exposes the stateful numerical algorithm for a single immutable curve. Contexts own weakly keyed per-key samplers; different keys and playbacks do not share previous guesses. Do not share a context across threads or unrelated animations. Exact mode does not allocate samplers. This compatibility option matches the tested finite unit-square controls; it does not expand the model to out-of-range y controls or arbitrary WPF timeline semantics. The adapted MIT-licensed algorithm and license are recorded in `THIRD-PARTY-NOTICES.md`, included in all package archives.
+
 ## Draft and resource ownership
 
 Animation drafts belong to the document where they were created. They retain their board/track/key identity, original values and revision, including invalid text. Switching documents or exporting/recovering a workspace transfers inert drafts rather than applying them. Missing-target drafts remain recoverable until Reload. Locks and stale revisions prevent mutation. Save design saves applied model values, while Save workspace includes unapplied drafts.
@@ -70,6 +87,8 @@ The application host copies user-selected files with a page-owned upload control
 
 Portable regressions cover parent/child clock interactions, spline inversion against independent parametric values, import/preservation, invalid data, sole-key metadata, scaling, no-op sharing and warm allocation. The existing compatibility suite is also published trimmed and run with reflection serialization disabled. Browser workflows use real pointer/keyboard/upload/download input and check artboard values/pixels, spline handles, source isolation, undo and recovery.
 
-`tests/DesignSpace.WpfParity.Tests` is a separate Windows-only native WPF reference executable, run by the Windows build job. It compares spline progress and sampled numeric storyboards using synchronous seeks, with explicit numerical tolerances and a JSON evidence artifact. The WPF spline reference uses a 0.003 progress tolerance (0.3 units for the test animations' 100-unit range), based on [WPF's own solver accuracy of 0.001 and maximum y derivative of 3](https://source.dot.net/PresentationCore/System/Windows/Media/Animation/KeySpline.cs.html). Linear/discrete/cubic-easing clock checks retain a 0.000001 value tolerance, and independent parametric spline tests retain a 0.0000001 bound. Evidence reports maximum observed differences, not just a pass label. Runtime preview values use round-trip formatting instead of the three-decimal inspector formatter. Run it on Windows with `dotnet run --project tests/DesignSpace.WpfParity.Tests -c Release`. It is deliberately not in the portable solution, to avoid introducing a Windows desktop dependency into the reusable libraries.
+`tests/DesignSpace.WpfParity.Tests` is a separate Windows-only native WPF reference executable, run by the Windows build job. It compares like-for-like ordered spline samples using the WPF-compatible context, including forward, reverse and nonsequential seeks. A separate synchronous-seek matrix compares parent/child clocks and animated values. The retained tolerances are 1e-12 for normalized spline progress, 1e-9 for animated spline values and 1e-6 for other numeric values. Exact-mode differences are measured independently and are not relabeled as compatibility passes; independent parametric tests continue to verify exact inversion.
+
+The JSON evidence includes sample counts, maximum observed differences for each mode, the reference-source link and individual case outcomes. Runtime preview values use round-trip formatting instead of the three-decimal inspector formatter. Run it on Windows with `dotnet run --project tests/DesignSpace.WpfParity.Tests -c Release`. It is deliberately not in the portable solution, avoiding a Windows desktop dependency in the reusable libraries. The numerical algorithm follows [WPF's source](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/Media/Animation/KeySpline.cs); a native test result is still limited to its stated curves, sample sequences and clock scenarios.
 
 Remaining boundaries include arbitrary nested timeline hierarchies, additive/cumulative animation, By/from-only and color/object/point/path animations, acceleration/deceleration ratios, complete property paths, automatic triggers, explicit state storyboards, and complete template/runtime semantics. Track delay/duration/repeat-duration settings have a one-year safety limit. No matched Blend build/theme/DPI screenshot comparison or full native-runtime/physical-GPU qualification is implied by numerical WPF tests or software-backed browser screenshots.
