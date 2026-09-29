@@ -13,9 +13,17 @@ const snapshot=()=>page.evaluate(()=>globalThis.designSpaceDiagnostics);
 const wait=(fn,arg=null)=>page.waitForFunction(fn,arg,{timeout:20000});
 const settle=()=>page.waitForTimeout(400);
 async function start(){await page.goto(base+'?diagnostics=1',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>globalThis.designSpaceDiagnostics?.ready&&globalThis.designSpaceDiagnostics.drawCount>0,null,{timeout:180000});await settle();}
+async function bounds(name){
+  // Capture the rendered control in the same observation that satisfies the wait.
+  // A model update can precede its replacement tab's first measure/arrange pass.
+  const observed=await wait(name=>{
+    const c=globalThis.designSpaceDiagnostics.controls.find(c=>c.Name===name);
+    return c&&c.Width>0&&c.Height>0?c:null;
+  },name);
+  try{return await observed.jsonValue();}finally{await observed.dispose();}
+}
 async function click(name){
-  await wait(name=>globalThis.designSpaceDiagnostics.controls.some(c=>c.Name===name),name);
-  const c=(await snapshot()).controls.find(c=>c.Name===name);assert.ok(c.Width>0&&c.Height>0,name);
+  const c=await bounds(name);
   await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2);await settle();
 }
 async function select(id){const tab=(await snapshot()).workspace.documents.find(d=>d.id===id);assert.ok(tab);await click('Document tab '+tab.title);await wait(id=>globalThis.designSpaceDiagnostics.workspace.active===id,id);}
@@ -83,13 +91,20 @@ try{
     page.off('download',listener);
   });
   await check('document tabs reorder with real drag input',async()=>{
-    const s=await snapshot(),a=s.controls.find(c=>c.Name==='Document tab MainPage.xaml'),b=s.controls.find(c=>c.Name==='Document tab Page1.xaml');assert.ok(a&&b);
+    const a=await bounds('Document tab MainPage.xaml'),b=await bounds('Document tab Page1.xaml');
     await page.mouse.move(a.X+a.Width/2,a.Y+a.Height/2);await page.mouse.down();await page.mouse.move(b.X+b.Width+15,b.Y+b.Height/2,{steps:12});await page.mouse.up();
-    await wait(id=>globalThis.designSpaceDiagnostics.workspace.documents.at(-1).id===id,main);assert.equal((await snapshot()).workspace.active,second);
+    await wait(id=>{
+      const s=globalThis.designSpaceDiagnostics,docs=s.workspace.documents;
+      if(docs.at(-1).id!==id)return false;
+      const tabs=docs.map(d=>s.controls.find(c=>c.Name==='Document tab '+d.title));
+      return tabs.every(t=>t&&t.Width>0&&t.Height>0)&&tabs.every((t,i)=>i===0||t.X>=tabs[i-1].X+tabs[i-1].Width);
+    },main);
+    assert.equal((await snapshot()).workspace.active,second);
   });
   await check('pin and close-other commands protect pinned documents',async()=>{
     async function tabMenu(id,command){
-      const s=await snapshot(),tab=s.workspace.documents.find(d=>d.id===id),c=s.controls.find(c=>c.Name==='Document tab '+tab.title);
+      const tab=(await snapshot()).workspace.documents.find(d=>d.id===id);assert.ok(tab,'Document still exists');
+      const c=await bounds('Document tab '+tab.title);
       await page.mouse.click(c.X+c.Width/2,c.Y+c.Height/2,{button:'right'});
       const name=command+' '+tab.title;
       await wait(name=>globalThis.designSpaceDiagnostics.controls.some(c=>c.Name===name),name);
