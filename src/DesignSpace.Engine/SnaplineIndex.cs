@@ -48,7 +48,8 @@ public sealed class SnaplineIndex
             if(result.Count>0&&anchor.Kind==SnapGuideKind.Alignment&&result[^1] is var last&&last.Kind==anchor.Kind&&last.Position==anchor.Position)
             {
                 var x=Math.Min(last.Source.X,anchor.Source.X);var y=Math.Min(last.Source.Y,anchor.Source.Y);
-                result[^1]=last with{Source=new(x,y,Math.Max(last.Source.Right,anchor.Source.Right)-x,Math.Max(last.Source.Bottom,anchor.Source.Bottom)-y)};
+                var bounds=new DRect(x,y,Math.Max(last.Source.Right,anchor.Source.Right)-x,Math.Max(last.Source.Bottom,anchor.Source.Bottom)-y);
+                Validate(bounds);result[^1]=last with{Source=bounds};
             }
             else result.Add(anchor);
         }
@@ -72,7 +73,7 @@ public sealed class SnaplineIndex
             items.Add(new(Coordinate(b,x,2)-padding,b,2,SnapGuideKind.Padding,-1));
         }
     }
-    private static double Coordinate(DRect b,bool x,int point)=>x?b.X+b.Width*point/2:b.Y+b.Height*point/2;
+    private static double Coordinate(DRect b,bool x,int point)=>x?b.X+b.Width*(point*.5):b.Y+b.Height*(point*.5);
     private static void Validate(DRect b)
     {
         if(!double.IsFinite(b.X)||!double.IsFinite(b.Y)||!double.IsFinite(b.Right)||!double.IsFinite(b.Bottom)||b.Width<0||b.Height<0)
@@ -101,6 +102,7 @@ public sealed class SnaplineIndex
                 if(a.Kind==SnapGuideKind.Margin&&
                     (x?Math.Min(box.Bottom,a.Source.Bottom)<=Math.Max(box.Y,a.Source.Y):Math.Min(box.Right,a.Source.Right)<=Math.Max(box.X,a.Source.X)))continue;
                 var delta=a.Position-coordinate;
+                if(!double.IsFinite(delta)||Math.Abs(delta)>tolerance)continue;
                 // Resizing must never cross the fixed opposite edge or collapse to zero.
                 if(resize&&(point==0?Coordinate(box,x,2)-a.Position:a.Position-Coordinate(box,x,0))<1)continue;
                 if(best is { } old)
@@ -117,7 +119,7 @@ public sealed class SnaplineIndex
     {
         Validate(proposed);ValidateTolerance(toleranceX,toleranceY);
         var x=Find(_x,proposed,true,7,toleranceX,false);var y=Find(_y,proposed,false,7,toleranceY,false);
-        var result=proposed.Translate(x?.Delta??0,y?.Delta??0);
+        var result=proposed.Translate(x?.Delta??0,y?.Delta??0);Validate(result);
         return new(result,Guide(x,result,true),Guide(y,result,false));
     }
     public SnaplineResult Resize(DRect proposed,SnapEdges edges,double toleranceX,double toleranceY)
@@ -130,7 +132,7 @@ public sealed class SnaplineIndex
         var y=Find(_y,proposed,false,edges.HasFlag(SnapEdges.Top)?1:edges.HasFlag(SnapEdges.Bottom)?4:0,toleranceY,true);
         var left=proposed.X+(edges.HasFlag(SnapEdges.Left)?x?.Delta??0:0);var right=proposed.Right+(edges.HasFlag(SnapEdges.Right)?x?.Delta??0:0);
         var top=proposed.Y+(edges.HasFlag(SnapEdges.Top)?y?.Delta??0:0);var bottom=proposed.Bottom+(edges.HasFlag(SnapEdges.Bottom)?y?.Delta??0:0);
-        var result=new DRect(left,top,right-left,bottom-top);
+        var result=new DRect(left,top,right-left,bottom-top);Validate(result);
         return new(result,Guide(x,result,true),Guide(y,result,false));
     }
     private static SnapGuide? Guide(Match? match,DRect box,bool x)
@@ -140,7 +142,7 @@ public sealed class SnaplineIndex
             return x?new(new(a.Position,Math.Min(box.Y,a.Source.Y)),new(a.Position,Math.Max(box.Bottom,a.Source.Bottom)),a.Kind,0):
                 new(new(Math.Min(box.X,a.Source.X),a.Position),new(Math.Max(box.Right,a.Source.Right),a.Position),a.Kind,0);
         var near=Coordinate(box,x,a.Point);var far=Coordinate(a.Source,x,a.Kind==SnapGuideKind.Margin?(a.Side>0?2:0):(a.Side>0?0:2));
-        var across=x?(Math.Max(box.Y,a.Source.Y)+Math.Min(box.Bottom,a.Source.Bottom))/2:(Math.Max(box.X,a.Source.X)+Math.Min(box.Right,a.Source.Right))/2;
+        var across=x?Math.Max(box.Y,a.Source.Y)/2+Math.Min(box.Bottom,a.Source.Bottom)/2:Math.Max(box.X,a.Source.X)/2+Math.Min(box.Right,a.Source.Right)/2;
         return x?new(new(far,across),new(near,across),a.Kind,Math.Abs(near-far)):
             new(new(across,far),new(across,near),a.Kind,Math.Abs(near-far));
     }

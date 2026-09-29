@@ -42,6 +42,14 @@ internal static class SnaplineTests
         foreach(var bad in new[]{double.NaN,double.PositiveInfinity,0d,-1})Test("invalid tolerance "+bad,()=>Reject(()=>index.Move(target,bad,6)));
         Test("invalid bounds reject",()=>Reject(()=>index.Move(new(0,0,double.NaN,5),6,6)));
         Test("negative target extent rejects",()=>Reject(()=>new SnaplineIndex([new DRect(0,0,-1,5)])));
+        Test("large finite widths retain their finite right anchor",()=>
+        {
+            var large=new SnaplineIndex([new DRect(0,100,1e308,10)],margin:0,padding:0);
+            var sample=large.Move(new DRect(1e308,200,1,1),6,6);
+            Check(sample.SnappedX&&double.IsFinite(sample.XGuide!.Value.Start.X)&&sample.XGuide.Value.Start.X==1e308);
+        });
+        Test("unrepresentable guide unions fail before retaining invalid geometry",()=>
+            Reject(()=>new SnaplineIndex([new DRect(100,-1e308,10,1),new DRect(100,1e308,10,1)],margin:0,padding:0)));
         Test("target budget is enforced",()=>Reject(()=>new SnaplineIndex(Enumerable.Repeat(target,DocumentValidator.MaxNodes+1))));
         foreach(var settings in new[]{new ArtboardSettings{GridSize=0},new(){SnapTolerance=33},new(){DefaultMargin=-1},new(){DefaultPadding=double.NaN}})
             Test("invalid settings reject "+settings,()=>Reject(settings.Validate));

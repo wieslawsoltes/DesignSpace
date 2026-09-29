@@ -43,7 +43,10 @@ async function startMove(x,y,{alt=false,name='Moving'}={}){
   await page.mouse.move(z.x,z.y,{steps:14});await settle();return s;
 }
 async function finish(before,{alt=false,changed=true}={}){
-  await page.mouse.up();if(alt)await page.keyboard.up('Alt');await settle();const s=await snapshot();
+  await page.mouse.up();if(alt)await page.keyboard.up('Alt');
+  if(changed)await page.waitForFunction(r=>globalThis.designSpaceDiagnostics.revision===r+1,before.revision,{timeout:15000});
+  await page.waitForFunction(()=>{const g=globalThis.designSpaceDiagnostics.snapping.guides;return g.XGuide===null&&g.YGuide===null;});
+  await settle();const s=await snapshot();
   assert.equal(s.revision,before.revision+(changed?1:0));assert.equal(s.snapping.guides.XGuide,null);assert.equal(s.snapping.guides.YGuide,null);return s;
 }
 async function undo(){const s=await snapshot();await click('Undo');await page.waitForFunction(r=>globalThis.designSpaceDiagnostics.revision===r+1,s.revision);await settle();}
@@ -65,6 +68,17 @@ try{
   await check('settings apply atomically without geometry or undo history',async()=>{
     const before=await snapshot();await click('Artboard Snap grid');await click('Artboard Snap lines');await edit('Artboard Padding','12');assert.deepEqual((await snapshot()).snapping.settings,before.snapping.settings);
     await click('Apply artboard settings');const s=await snapshot();assert.equal(s.snapping.settings.SnapToSnaplines,true);assert.equal(s.snapping.settings.SnapToGrid,false);assert.equal(s.snapping.settings.DefaultPadding,12);assert.equal(s.revision,before.revision);assert.equal(s.xaml,before.xaml);
+  });
+  await check('View menu and settings panel share one preference baseline',async()=>{
+    const before=await snapshot();
+    async function menu(label){await click('View');await click('Menu View · '+label);}
+    await menu('Show / hide grid');assert.equal((await snapshot()).snapping.settings.ShowGrid,true);
+    await edit('Artboard Margin','9');await click('Apply artboard settings');let s=await snapshot();assert.equal(s.snapping.settings.DefaultMargin,9);assert.equal(s.snapping.settings.ShowGrid,true);
+    await edit('Artboard Margin','8');await click('Apply artboard settings');await menu('Show / hide grid');
+    for(const [label,key] of [['Show / hide rulers','ShowRulers'],['Snap to gridlines','SnapToGrid'],['Snap to snaplines','SnapToSnaplines']]){
+      const original=(await snapshot()).snapping.settings[key];await menu(label);assert.equal((await snapshot()).snapping.settings[key],!original);await menu(label);
+    }
+    await menu('Artboard options');s=await snapshot();assert.deepEqual(s.snapping.settings,before.snapping.settings);assert.equal(s.revision,before.revision);assert.equal(s.xaml,before.xaml);
   });
   await check('edge snapping previews real geometry and pixels before one undoable commit',async()=>{
     const before=await startMove(297,300),s=await snapshot();near(300,preview(s,'Moving').x);assert.equal(s.revision,before.revision);assert.equal(node(s,'Moving').properties['Canvas.Left'],'100');assert.equal(s.snapping.targets,2);assert.equal(s.snapping.indexBuilds,before.snapping.indexBuilds+1);
