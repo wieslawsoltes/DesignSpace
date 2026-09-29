@@ -26,7 +26,7 @@ public sealed partial class TimelineControl
         selectedTarget=SelectedTrack?.TargetId,selectedProperty=SelectedTrack?.Property,
         tracks=ActiveStoryboard?.Tracks.Select((track,index)=>new
         {
-            target=track.TargetId,property=track.Property,
+            target=track.TargetId,property=track.Property,additive=track.IsAdditive,cumulative=track.IsCumulative,
             timing=track.Timing is { } t?new{duration=t.Duration,begin=t.BeginTime,speed=t.SpeedRatio,reverse=t.AutoReverse,count=t.RepeatCount,span=t.RepeatDuration,forever=t.Loop,fill=t.FillBehavior}:null,
             keys=track.Keys.Select(key=>new{time=key.Time,value=key.Value,easing=key.Easing,spline=key.Spline?.ToXaml(),function=key.Function is { } f?new{family=f.Family.ToString(),mode=f.Mode.ToString(),amplitude=f.Amplitude,bounces=f.Bounces,bounciness=f.Bounciness,oscillations=f.Oscillations,springiness=f.Springiness,exponent=f.Exponent,power=f.Power}:null,x=150+AnimationEngine.KeyToParentTime(track,key.Time)*_scale,y=40+index*25}).ToArray()
         }).ToArray()

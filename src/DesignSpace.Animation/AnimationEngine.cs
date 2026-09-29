@@ -42,10 +42,12 @@ public static partial class AnimationEngine
     {
         if(storyboard is null)return EvaluateLocal(root,null,0,state,context);
         var sample=StoryboardClock.Sample(storyboard,time);
-        return EvaluateLocal(root,sample.Applies?storyboard:null,sample.LocalTime,state,context);
+        return EvaluateLocalCore(root,sample.Applies?storyboard:null,sample.LocalTime,state,context,sample.IsReversed);
     }
     /// <summary>Scrubs the parent interval, bypassing parent delay/repeats but retaining child timing.</summary>
     public static DesignNode EvaluateLocal(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null,AnimationSamplingContext? context=null)
+        =>EvaluateLocalCore(root,storyboard,time,state,context,false);
+    private static DesignNode EvaluateLocalCore(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state,AnimationSamplingContext? context,bool parentReversed)
     {
         if(!double.IsFinite(time))throw new ArgumentOutOfRangeException(nameof(time));
         if(state is null&&storyboard is null)return root;
@@ -62,7 +64,7 @@ public static partial class AnimationEngine
             foreach(var track in storyboard.Tracks)
             {
                 var node=index.Find(track.TargetId);if(node is null||track.Keys.IsEmpty)continue;
-                var sample=StoryboardClock.Sample(track,time,storyboard.Duration);if(!sample.Applies)continue;
+                var sample=StoryboardClock.Sample(track,time,storyboard.Duration,parentReversed);if(!sample.Applies)continue;
                 var values=Values(track.TargetId);
                 var baseline=track.Property=="Rotation"?node.Rotation:node.Number(track.Property,track.Property=="Opacity"?1:0);
                 if(values.TryGetValue(track.Property,out var stateValue))baseline=Numbers.Parse(stateValue,baseline);

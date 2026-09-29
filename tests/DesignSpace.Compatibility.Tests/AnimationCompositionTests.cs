@@ -18,7 +18,7 @@ internal static class AnimationCompositionTests
         AnimationTrack Track(params AnimationKey[] keys)=>new(node.Id,"Canvas.Left",keys.ToImmutableArray());
         DesignStoryboard Board(AnimationTrack track,double duration=12)=>new(Guid.NewGuid(),"Composition",duration,[track]);
         double Value(DesignStoryboard board,double time,DesignState? state=null)=>AnimationEngine.Evaluate(root,board,time,state).Find(node.Id)!.Number("Canvas.Left");
-        var simple=Track(new(0,10),new(2,30));
+        var simple=Track(new AnimationKey(0,10),new(2,30));
         foreach(var additive in new[]{false,true})foreach(var cumulative in new[]{false,true})
         {
             var track=simple with{IsAdditive=additive,IsCumulative=cumulative,Timing=new(2,RepeatCount:3)};
@@ -26,14 +26,14 @@ internal static class AnimationCompositionTests
             foreach(var (time,local,iteration) in new[]{(0d,0d,1d),(1,1,1),(2,0,2),(3,1,2),(4,0,3),(5,1,3),(6,2,3),(10,2,3)})
                 Test($"flags {additive}/{cumulative} at {time}",()=>Near(10+local*10+(additive?40:0)+(cumulative?(iteration-1)*30:0),Value(board,time)));
         }
-        Test("first delayed additive key interpolates from zero",()=>Near(50,AnimationEngine.Evaluate(Track(new(2,20)) with{IsAdditive=true},1,40)));
-        Test("first delayed absolute key interpolates from base",()=>Near(30,AnimationEngine.Evaluate(Track(new(2,20)),1,40)));
+        Test("first delayed additive key interpolates from zero",()=>Near(50,AnimationEngine.Evaluate(Track(new AnimationKey(2,20)) with{IsAdditive=true},1,40)));
+        Test("first delayed absolute key interpolates from base",()=>Near(30,AnimationEngine.Evaluate(Track(new AnimationKey(2,20)),1,40)));
         Test("additive exact zero-time key offsets base",()=>Near(50,AnimationEngine.Evaluate(simple with{IsAdditive=true},0,40)));
         Test("empty additive cumulative track leaves base",()=>Near(40,AnimationEngine.EvaluateIteration(Track() with{IsAdditive=true,IsCumulative=true},1,40,4)));
         Test("cumulative uses final value not endpoint delta",()=>Near(50,AnimationEngine.EvaluateIteration(simple with{IsCumulative=true},1,40,2)));
-        Test("cumulative zero final key contributes nothing",()=>Near(5,AnimationEngine.EvaluateIteration(Track(new(0,10),new(2,0)) with{IsCumulative=true},1,40,10)));
-        Test("negative final key accumulates signed offsets",()=>Near(-25,AnimationEngine.EvaluateIteration(Track(new(0,10),new(2,-20)) with{IsCumulative=true},1,40,2)));
-        Test("unsorted keys use time order not storage order",()=>Near(50,AnimationEngine.EvaluateIteration(Track(new(2,30),new(0,10)) with{IsCumulative=true},1,40,2)));
+        Test("cumulative zero final key contributes nothing",()=>Near(5,AnimationEngine.EvaluateIteration(Track(new AnimationKey(0,10),new(2,0)) with{IsCumulative=true},1,40,10)));
+        Test("negative final key accumulates signed offsets",()=>Near(-25,AnimationEngine.EvaluateIteration(Track(new AnimationKey(0,10),new(2,-20)) with{IsCumulative=true},1,40,2)));
+        Test("unsorted keys use time order not storage order",()=>Near(50,AnimationEngine.EvaluateIteration(Track(new AnimationKey(2,30),new(0,10)) with{IsCumulative=true},1,40,2)));
         Test("state value is additive base, document root unchanged",()=>{var before=root;var state=new DesignState("Active",[new(node.Id,"Canvas.Left","100")]);Near(120,Value(Board(simple with{IsAdditive=true}),1,state));Near(40,before.Find(node.Id)!.Number("Canvas.Left"));});
         Test("child delay leaves base before additive start",()=>{var b=Board(simple with{IsAdditive=true,Timing=new(2,BeginTime:1)});Near(40,Value(b,.5));Near(50,Value(b,1));});
         Test("Stop removes additive and cumulative contributions",()=>Near(40,Value(Board(simple with{IsAdditive=true,IsCumulative=true,Timing=new(2,RepeatCount:2,FillBehavior:"Stop")}),4)));
@@ -49,8 +49,8 @@ internal static class AnimationCompositionTests
         Test("clock reports live and completed iterations",()=>{var t=new TrackTiming(2,RepeatCount:3);Near(2,StoryboardClock.Sample(t,2).CurrentIteration);Near(3,StoryboardClock.Sample(t,6).CurrentIteration);Near(3,StoryboardClock.Sample(t,10).CurrentIteration);});
         Test("one reverse cycle counts once",()=>{var t=new TrackTiming(2,AutoReverse:true,RepeatCount:2);Near(1,StoryboardClock.Sample(t,3).CurrentIteration);Near(2,StoryboardClock.Sample(t,4).CurrentIteration);Near(2,StoryboardClock.Sample(t,8).CurrentIteration);});
         foreach(var iteration in new[]{0d,-1,.5,double.NaN,double.PositiveInfinity,9007199254740992d})Test("reject invalid iteration "+iteration,()=>Reject(()=>AnimationEngine.EvaluateIteration(simple,1,40,iteration)));
-        Test("composition overflow is explicit",()=>Reject(()=>AnimationEngine.EvaluateIteration(Track(new(0,double.MaxValue)) with{IsAdditive=true},0,double.MaxValue,1)));
-        Test("accumulation overflow is explicit",()=>Reject(()=>AnimationEngine.EvaluateIteration(Track(new(0,double.MaxValue)) with{IsCumulative=true},0,0,3)));
+        Test("composition overflow is explicit",()=>Reject(()=>AnimationEngine.EvaluateIteration(Track(new AnimationKey(0,double.MaxValue)) with{IsAdditive=true},0,double.MaxValue,1)));
+        Test("accumulation overflow is explicit",()=>Reject(()=>AnimationEngine.EvaluateIteration(Track(new AnimationKey(0,double.MaxValue)) with{IsCumulative=true},0,0,3)));
         Test("flags are a no-op when already set",()=>{var b=Board(simple);Check(ReferenceEquals(b,AnimationEngine.ChangeTrackComposition(b,node.Id,"Canvas.Left",false,false)));});
         Test("composition edit is one reversible transaction",()=>{var d=new DesignDocument{Root=root,Storyboards=[Board(simple)]};var session=new DesignSession(d);session.Execute("Composition",v=>v with{Storyboards=[AnimationEngine.ChangeTrackComposition(v.Storyboards[0],node.Id,"Canvas.Left",true,true)]});Check(session.Revision==1&&session.Document.Storyboards[0].Tracks[0].IsCumulative);session.Undo();Check(ReferenceEquals(d,session.Document));session.Redo();Check(session.Document.Storyboards[0].Tracks[0].IsAdditive);});
         Test("key edits preserve composition metadata",()=>{var b=Board(simple with{IsAdditive=true,IsCumulative=true});b=AnimationEngine.SetKey(b,node.Id,"Canvas.Left",1,20,"Function",function:new(EasingFamily.Sine));b=AnimationEngine.MoveKey(b,node.Id,"Canvas.Left",1,1.5);b=AnimationEngine.ChangeTrackTiming(b,node.Id,"Canvas.Left",new(3));Check(b.Tracks[0].IsAdditive&&b.Tracks[0].IsCumulative);});

@@ -6,6 +6,8 @@ public readonly record struct StoryboardClockSample(double LocalTime,bool Applie
 {
     /// <summary>One-based count of complete forward/reverse cycles. A parent repeat restarts its children.</summary>
     public double CurrentIteration { get; init; }=1;
+    /// <summary>Intrinsic direction propagated through parent and child auto-reverse phases.</summary>
+    public bool IsReversed { get; init; }
 }
 
 /// <summary>Deterministic parent and child timing. Sampling never mutates a document or starts a timer.</summary>
@@ -20,18 +22,18 @@ public static class StoryboardClock
         ArgumentNullException.ThrowIfNull(board);
         return SampleCore(board.Duration,board.BeginTime,board.SpeedRatio,board.AutoReverse,board.RepeatCount,board.RepeatDuration,board.Loop,board.FillBehavior,elapsed);
     }
-    public static StoryboardClockSample Sample(TrackTiming timing,double parentTime)
+    public static StoryboardClockSample Sample(TrackTiming timing,double parentTime,bool parentReversed=false)
     {
         ArgumentNullException.ThrowIfNull(timing);timing.Validate();
-        return SampleCore(timing.Duration,timing.BeginTime,timing.SpeedRatio,timing.AutoReverse,timing.RepeatCount,timing.RepeatDuration,timing.Loop,timing.FillBehavior,parentTime);
+        return SampleCore(timing.Duration,timing.BeginTime,timing.SpeedRatio,timing.AutoReverse,timing.RepeatCount,timing.RepeatDuration,timing.Loop,timing.FillBehavior,parentTime,parentReversed);
     }
-    public static StoryboardClockSample Sample(AnimationTrack track,double parentTime,double parentDuration)
+    public static StoryboardClockSample Sample(AnimationTrack track,double parentTime,double parentDuration,bool parentReversed=false)
     {
         ArgumentNullException.ThrowIfNull(track);
         if(!double.IsFinite(parentTime)||!double.IsFinite(parentDuration)||parentDuration<=0)throw new ArgumentOutOfRangeException(nameof(parentTime));
-        return track.Timing is { } timing?Sample(timing,parentTime):new(Math.Clamp(parentTime,0,parentDuration),true,false);
+        return track.Timing is { } timing?Sample(timing,parentTime,parentReversed):new(Math.Clamp(parentTime,0,parentDuration),true,false){IsReversed=parentReversed};
     }
-    private static StoryboardClockSample SampleCore(double duration,double begin,double speed,bool reverse,double repeats,double? repeatDuration,bool forever,string fill,double elapsed)
+    private static StoryboardClockSample SampleCore(double duration,double begin,double speed,bool reverse,double repeats,double? repeatDuration,bool forever,string fill,double elapsed,bool parentReversed=false)
     {
         if(!double.IsFinite(elapsed))throw new ArgumentOutOfRangeException(nameof(elapsed));
         if(duration<=0||!double.IsFinite(duration)||speed<=0||!double.IsFinite(speed)||!double.IsFinite(begin)||begin<0||
@@ -46,10 +48,14 @@ public static class StoryboardClock
         // Completed finite clocks do not need to multiply arbitrarily large elapsed times.
         var position=completed?activeDuration:(elapsed-begin)*speed;
         if(!double.IsFinite(position))throw new ArgumentOutOfRangeException(nameof(elapsed),"Clock time overflowed.");
-        var offset=position%cycle;
-        var iteration=Math.Floor(position/cycle)+1;
-        if(completed&&position>0&&Math.Abs(offset)<=cycle*1e-12){offset=cycle;iteration=Math.Max(1,iteration-1);}
-        var local=reverse?Math.Min(offset,cycle-offset):Math.Min(offset,duration);
-        return new(Math.Clamp(local,0,duration),true,completed){CurrentIteration=iteration};
+        // WPF chooses the incoming segment when a parent is progressing backwards.
+        // Use half-cycle indices so auto-reverse turning points retain their direction.
+        var offset=position%duration;
+        var segment=Math.Floor(position/duration);
+        if((completed||parentReversed)&&position>0&&Math.Abs(offset)<=duration*1e-12){offset=duration;segment=Math.Max(0,segment-1);}
+        var backwards=reverse&&segment%2>=1;
+        var local=backwards?duration-offset:offset;
+        var iteration=reverse?Math.Floor(segment/2)+1:segment+1;
+        return new(Math.Clamp(local,0,duration),true,completed){CurrentIteration=iteration,IsReversed=parentReversed^backwards};
     }
 }
