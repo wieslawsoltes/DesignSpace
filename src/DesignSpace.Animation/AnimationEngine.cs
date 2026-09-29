@@ -12,8 +12,17 @@ public static class AnimationEngine
         "Discrete"=>t>=1?1:0,"EaseIn"=>t*t*t,"EaseOut"=>1-Math.Pow(1-t,3),
         "EaseInOut"=>t<.5?4*t*t*t:1-Math.Pow(-2*t+2,3)/2,_=>t
     };
-    private static double Ease(double progress,AnimationKey key,AnimationSamplingContext? context)=>key.Easing=="Spline"
-        ? context?.Sample(key,progress) ?? (key.Spline??throw new InvalidDataException("Missing KeySpline.")).Evaluate(progress) : Ease(progress,key.Easing);
+    private static double Ease(double progress,AnimationKey key,AnimationSamplingContext? context)
+    {
+        // WPF keyframes preserve exact endpoint values even for degenerate Power=0 functions.
+        if(progress<=0)return 0;if(progress>=1)return 1;
+        return key.Easing switch
+        {
+            "Spline"=>context?.Sample(key,progress)??(key.Spline??throw new InvalidDataException("Missing KeySpline.")).Evaluate(progress),
+            "Function"=>(key.Function??throw new InvalidDataException("Missing easing function.")).Evaluate(progress),
+            _=>Ease(progress,key.Easing)
+        };
+    }
     /// <summary>Evaluates in the track's own keyframe time; parent clock mapping is deliberately separate.</summary>
     public static double Evaluate(AnimationTrack track,double time,double baseValue,AnimationSamplingContext? context=null)
     {
@@ -67,14 +76,14 @@ public static class AnimationEngine
         return -1;
     }
     /// <summary>Adds/replaces a key in child-local time, preserving timing and any existing spline on value-only edits.</summary>
-    public static DesignStoryboard SetKey(DesignStoryboard board,Guid target,string property,double time,double value,string easing="Linear",KeySpline? spline=null)
+    public static DesignStoryboard SetKey(DesignStoryboard board,Guid target,string property,double time,double value,string easing="Linear",KeySpline? spline=null,EasingCurve? function=null)
     {
         if(!Properties.Contains(property))throw new ArgumentException("This property does not support numeric animation.");
         if(!double.IsFinite(time)||!double.IsFinite(value))throw new ArgumentException("Keyframe time and value must be finite.");
         var position=TrackIndex(board,target,property);var track=position<0?new AnimationTrack(target,property,[]):board.Tracks[position];
         time=Math.Clamp(time,0,track.Timing?.Duration??board.Duration);
         var old=track.Keys.FirstOrDefault(k=>Math.Abs(k.Time-time)<.00001);
-        var key=new AnimationKey(time,value,easing){Spline=easing=="Spline"?spline??old?.Spline??KeySpline.Linear:null};
+        var key=new AnimationKey(time,value,easing){Spline=easing=="Spline"?spline??old?.Spline??KeySpline.Linear:null,Function=easing=="Function"?function??old?.Function??new(EasingFamily.Cubic):null};
         AnimationValidation.ValidateKey(key,track.Timing?.Duration??board.Duration);
         if(old==key)return board;
         track=track with{Keys=track.Keys.Where(k=>Math.Abs(k.Time-time)>.00001).Append(key).OrderBy(k=>k.Time).ToImmutableArray()};

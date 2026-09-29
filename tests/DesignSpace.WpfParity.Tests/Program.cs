@@ -113,6 +113,7 @@ internal static class Program
             }
             finally{reference.Remove(host);}
         });
+        var easing=EasingReferenceTests.Run();passed+=easing.Passed;failed+=easing.Failed;
         Directory.CreateDirectory("artifacts/verification");
         File.WriteAllText("artifacts/verification/wpf-animation-results.json",JsonSerializer.Serialize(new
         {

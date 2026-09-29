@@ -17,11 +17,14 @@ The Uno/Skia packages may include additional native/transitive notices. Inspect 
 Microsoft Blend, Visual Studio, WPF and WinUI are referenced descriptively. DesignSpace is not affiliated with Microsoft and does not bundle Microsoft's proprietary product source, logos, icon assets or font files.
 
 
-## WPF-compatible spline numerical algorithm
+## WPF-compatible animation mathematics
 
 `DesignSpace.Animation/WpfKeySplineSampler.cs` adapts the numerical portion of
 [dotnet/wpf KeySpline.cs](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/Media/Animation/KeySpline.cs).
-It is optional playback state, not a copied Microsoft Blend interface or proprietary asset.
+`DesignSpace.Core/EasingCurve.cs` also adapts the built-in Back, Bounce, Elastic,
+Exponential, Power, polynomial, Circle and Sine easing mathematics from the same
+[dotnet/wpf animation directory](https://github.com/dotnet/wpf/tree/main/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/Media/Animation).
+These are portable mathematical algorithms, not a copied Microsoft Blend interface or proprietary asset.
 The following upstream license is retained in source and every DesignSpace NuGet package.
 
 The MIT License (MIT)

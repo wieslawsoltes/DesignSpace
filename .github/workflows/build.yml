@@ -80,5 +80,5 @@ jobs:
         if: always() && runner.os == 'Windows'
         with:
           name: wpf-animation-reference
-          path: artifacts/verification/wpf-animation-results.json
+          path: artifacts/verification/wpf-*-results.json
           if-no-files-found: warn
