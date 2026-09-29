@@ -12,29 +12,29 @@ public static class AnimationEngine
         "Discrete"=>t>=1?1:0,"EaseIn"=>t*t*t,"EaseOut"=>1-Math.Pow(1-t,3),
         "EaseInOut"=>t<.5?4*t*t*t:1-Math.Pow(-2*t+2,3)/2,_=>t
     };
-    private static double Ease(double progress,AnimationKey key)=>key.Easing=="Spline"
-        ? (key.Spline??throw new InvalidDataException("Missing KeySpline.")).Evaluate(progress) : Ease(progress,key.Easing);
+    private static double Ease(double progress,AnimationKey key,AnimationSamplingContext? context)=>key.Easing=="Spline"
+        ? context?.Sample(key,progress) ?? (key.Spline??throw new InvalidDataException("Missing KeySpline.")).Evaluate(progress) : Ease(progress,key.Easing);
     /// <summary>Evaluates in the track's own keyframe time; parent clock mapping is deliberately separate.</summary>
-    public static double Evaluate(AnimationTrack track,double time,double baseValue)
+    public static double Evaluate(AnimationTrack track,double time,double baseValue,AnimationSamplingContext? context=null)
     {
         if(!double.IsFinite(time)||!double.IsFinite(baseValue))throw new ArgumentOutOfRangeException(nameof(time));
         if(track.Keys.IsEmpty)return baseValue;
         var keys=SortedKeys.GetValue(track,t=>t.Keys.OrderBy(k=>k.Time).ToArray());
-        if(time<=keys[0].Time)return keys[0].Time<=0?keys[0].Value:baseValue+(keys[0].Value-baseValue)*Ease(Math.Clamp(time/keys[0].Time,0,1),keys[0]);
+        if(time<=keys[0].Time)return keys[0].Time<=0?keys[0].Value:baseValue+(keys[0].Value-baseValue)*Ease(Math.Clamp(time/keys[0].Time,0,1),keys[0],context);
         var low=1;var high=keys.Length;
         while(low<high){var mid=(low+high)/2;if(keys[mid].Time<=time)low=mid+1;else high=mid;}
         if(low==keys.Length)return keys[^1].Value;
-        var a=keys[low-1];var b=keys[low];return a.Value+(b.Value-a.Value)*Ease((time-a.Time)/(b.Time-a.Time),b);
+        var a=keys[low-1];var b=keys[low];return a.Value+(b.Value-a.Value)*Ease((time-a.Time)/(b.Time-a.Time),b,context);
     }
     /// <summary>Maps elapsed time through the parent clock, then through every independently timed child.</summary>
-    public static DesignNode Evaluate(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null)
+    public static DesignNode Evaluate(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null,AnimationSamplingContext? context=null)
     {
-        if(storyboard is null)return EvaluateLocal(root,null,0,state);
+        if(storyboard is null)return EvaluateLocal(root,null,0,state,context);
         var sample=StoryboardClock.Sample(storyboard,time);
-        return EvaluateLocal(root,sample.Applies?storyboard:null,sample.LocalTime,state);
+        return EvaluateLocal(root,sample.Applies?storyboard:null,sample.LocalTime,state,context);
     }
     /// <summary>Scrubs the parent interval, bypassing parent delay/repeats but retaining child timing.</summary>
-    public static DesignNode EvaluateLocal(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null)
+    public static DesignNode EvaluateLocal(DesignNode root,DesignStoryboard? storyboard,double time,DesignState? state=null,AnimationSamplingContext? context=null)
     {
         if(!double.IsFinite(time))throw new ArgumentOutOfRangeException(nameof(time));
         if(state is null&&storyboard is null)return root;
@@ -55,7 +55,7 @@ public static class AnimationEngine
                 var values=Values(track.TargetId);
                 var baseline=track.Property=="Rotation"?node.Rotation:node.Number(track.Property,track.Property=="Opacity"?1:0);
                 if(values.TryGetValue(track.Property,out var stateValue))baseline=Numbers.Parse(stateValue,baseline);
-                values[track.Property]=Evaluate(track,sample.LocalTime,baseline).ToString("R",System.Globalization.CultureInfo.InvariantCulture);
+                values[track.Property]=Evaluate(track,sample.LocalTime,baseline,context).ToString("R",System.Globalization.CultureInfo.InvariantCulture);
             }
         }
         return DesignTree.SetProperties(root,changes,replacePropertyElements:true);
@@ -86,7 +86,9 @@ public static class AnimationEngine
         var track=board.Tracks[position];var old=track.Keys.FirstOrDefault(k=>Math.Abs(k.Time-oldTime)<.00001)??throw new InvalidOperationException("The keyframe no longer exists.");
         if(!double.IsFinite(newTime))throw new ArgumentOutOfRangeException(nameof(newTime));
         newTime=Math.Clamp(newTime,0,track.Timing?.Duration??board.Duration);if(newTime==old.Time)return board;
-        var keys=track.Keys.Where(k=>k!=old&&Math.Abs(k.Time-newTime)>.00001).Append(old with{Time=newTime}).OrderBy(k=>k.Time).ToImmutableArray();
+        if(track.Keys.Any(k=>k!=old&&Math.Abs(k.Time-newTime)<.00001))
+            throw new InvalidOperationException("A keyframe already occupies that time. Move it or explicitly replace its value first.");
+        var keys=track.Keys.Where(k=>k!=old).Append(old with{Time=newTime}).OrderBy(k=>k.Time).ToImmutableArray();
         return board with{Tracks=board.Tracks.SetItem(position,track with{Keys=keys})};
     }
     public static DesignStoryboard ChangeTrackTiming(DesignStoryboard board,Guid target,string property,TrackTiming? timing,bool scaleKeys=false)

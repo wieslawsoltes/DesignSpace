@@ -15,3 +15,35 @@ Original DesignSpace code is MIT licensed. Upstream components retain their own 
 The Uno/Skia packages may include additional native/transitive notices. Inspect the restored package graph and packaged license files when redistributing a build. DesignSpace does not replace these obligations or provide legal certification.
 
 Microsoft Blend, Visual Studio, WPF and WinUI are referenced descriptively. DesignSpace is not affiliated with Microsoft and does not bundle Microsoft's proprietary product source, logos, icon assets or font files.
+
+
+## WPF-compatible spline numerical algorithm
+
+`DesignSpace.Animation/WpfKeySplineSampler.cs` adapts the numerical portion of
+[dotnet/wpf KeySpline.cs](https://github.com/dotnet/wpf/blob/main/src/Microsoft.DotNet.Wpf/src/PresentationCore/System/Windows/Media/Animation/KeySpline.cs).
+It is optional playback state, not a copied Microsoft Blend interface or proprietary asset.
+The following upstream license is retained in source and every DesignSpace NuGet package.
+
+The MIT License (MIT)
+
+Copyright (c) .NET Foundation and Contributors
+
+All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

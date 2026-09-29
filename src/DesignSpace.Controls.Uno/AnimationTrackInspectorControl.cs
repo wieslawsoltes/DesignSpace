@@ -38,9 +38,9 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
     public AnimationTrackInspectorControl(DesignSession session,TimelineControl timeline)
     {
         _session=session;_timeline=timeline;_syncing=true;
-        RowDefinitions.Add(new(){Height=new GridLength(29)});RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
+        RowDefinitions.Add(new(){Height=new GridLength(29)});RowDefinitions.Add(new(){Height=new GridLength(30)});RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
         var toolbar=new StackPanel{Orientation=Orientation.Horizontal};toolbar.Children.Add(new StudioButton("Apply track",Apply,"Apply animation track"));toolbar.Children.Add(new StudioButton("Reload",()=>Reload(true),"Reload animation track"));Children.Add(toolbar);
-        var body=new StackPanel{Spacing=5,Padding=new Thickness(8)};var scroll=new ScrollViewer{Content=body,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};SetRow(scroll,1);Children.Add(scroll);
+        var body=new StackPanel{Spacing=5,Padding=new Thickness(8)};var scroll=new ScrollViewer{Content=body,HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled};SetRow(scroll,2);Children.Add(scroll);
         _status.TextWrapping=TextWrapping.Wrap;body.Children.Add(_title);body.Children.Add(_status);
         void Field(string label,string value)
         {
@@ -56,12 +56,17 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
         var presets=new StackPanel{Orientation=Orientation.Horizontal};
         foreach(var (name,text) in new[]{("Linear","0,0 1,1"),("Ease in","0.42,0 1,1"),("Ease out","0,0 0.58,1"),("Ease both","0.42,0 0.58,1")})
             presets.Children.Add(new StudioButton(name,()=>{_syncing=true;_easing.SelectedItem="Spline";_fields["Key spline"].Text=text;_syncing=false;DraftChanged();},"Spline preset "+name));
-        body.Children.Add(presets);body.Children.Add(StudioTheme.Text("Preview parent time (seconds)"));body.Children.Add(_previewTime);
-        body.Children.Add(new StudioButton("Scrub preview",()=>
-        {
-            try{var time=Read(_previewTime.Text);if(time<0||time>(_timeline.ActiveStoryboard?.Duration??0))throw new InvalidDataException("Preview time is outside the parent interval.");_timeline.Scrub(time);}
-            catch(Exception e){Report(e.Message);}
-        },"Scrub animation preview"));
+        body.Children.Add(presets);
+        // Keep preview actions fixed while the key/clock inspector scrolls. They never alter a draft.
+        var preview=new Grid{ColumnSpacing=4,Padding=new Thickness(8,2,8,2)};
+        preview.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+        preview.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});
+        preview.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
+        preview.Children.Add(StudioTheme.Text("Time (s)"));
+        SetColumn(_previewTime,1);preview.Children.Add(_previewTime);
+        var scrub=new StudioButton("Scrub",ScrubPreview,"Scrub animation preview");SetColumn(scrub,2);preview.Children.Add(scrub);
+        SetRow(preview,1);Children.Add(preview);
+        _previewTime.KeyDown+=(_,e)=>{if(e.Key==Windows.System.VirtualKey.Enter){ScrubPreview();e.Handled=true;}};
         var note=StudioTheme.Text("Key times are child-local. Timeline diamonds show the first forward iteration in parent time. Apply commits timing and the selected key together; drafts follow document tabs.",11,"#AAAAB3");note.TextWrapping=TextWrapping.Wrap;body.Children.Add(note);
         foreach(var box in new[]{_repeat,_fill,_easing})box.SelectionChanged+=(_,_)=>DraftChanged();
         foreach(var check in new[]{_independent,_reverse,_scale}){check.Checked+=(_,_)=>DraftChanged();check.Unchecked+=(_,_)=>DraftChanged();}
@@ -74,6 +79,16 @@ public sealed class AnimationTrackInspectorControl : Grid,IWorkspaceDraftEditor,
         _curve.CurveChanged+=(_,spline)=>{_syncing=true;_easing.SelectedItem="Spline";_fields["Key spline"].Text=spline.ToXaml();_syncing=false;DraftChanged();};
         _session.DocumentChanged+=Changed;_timeline.AnimationSelectionChanged+=Changed;_timeline.SelectedStoryboardChanged+=Changed;
         _syncing=false;Reload(true);
+    }
+    private void ScrubPreview()
+    {
+        try
+        {
+            var time=Read(_previewTime.Text);
+            if(time<0||time>(_timeline.ActiveStoryboard?.Duration??0))throw new InvalidDataException("Preview time is outside the parent interval.");
+            _timeline.Scrub(time);
+        }
+        catch(Exception e){Report(e.Message);}
     }
     private static double Read(string text)=>double.TryParse(text,NumberStyles.Float,CultureInfo.InvariantCulture,out var value)&&double.IsFinite(value)?value:throw new InvalidDataException("Enter a finite animation value.");
     private ImmutableDictionary<string,string> Fields()=>_fields.ToImmutableDictionary(p=>p.Key,p=>p.Value.Text)
