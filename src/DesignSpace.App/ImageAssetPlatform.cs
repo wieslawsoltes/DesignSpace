@@ -16,6 +16,11 @@ internal sealed class ImageAssetPlatform : IWorkbenchPlatform,IWorkbenchAssetPla
     public Task WriteClipboardAsync(string text)=>_inner.WriteClipboardAsync(text);
     public async Task<OpenDesignAsset?> OpenImageAsync()
     {
+#if __WASM__
+        var selected=await BrowserFileUpload.PickAsync(image:true);if(selected is null)return null;
+        var mime=Path.GetExtension(selected.Name).ToLowerInvariant() switch{".jpg" or ".jpeg"=>"image/jpeg",".webp"=>"image/webp",".gif"=>"image/gif",_=>"image/png"};
+        return new(selected.Name,selected.Bytes!,mime);
+#else
         var picker=new FileOpenPicker{SuggestedStartLocation=PickerLocationId.PicturesLibrary};
         foreach(var extension in new[]{".png",".jpg",".jpeg",".webp",".gif"})picker.FileTypeFilter.Add(extension);
         var file=await picker.PickSingleFileAsync();if(file is null)return null;
@@ -23,5 +28,6 @@ internal sealed class ImageAssetPlatform : IWorkbenchPlatform,IWorkbenchAssetPla
         var buffer=await FileIO.ReadBufferAsync(file);var bytes=new byte[buffer.Length];using(var reader=DataReader.FromBuffer(buffer))reader.ReadBytes(bytes);
         var mime=Path.GetExtension(file.Name).ToLowerInvariant() switch{".jpg" or ".jpeg"=>"image/jpeg",".webp"=>"image/webp",".gif"=>"image/gif",_=>"image/png"};
         return new(file.Name,bytes,mime);
+#endif
     }
 }

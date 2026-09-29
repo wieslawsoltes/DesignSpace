@@ -25,7 +25,9 @@ Draw editable vector paths with **Pen (P)** and **Pencil (Y)**, then use **Direc
 
 XAML drafts are isolated from the current document until explicitly applied. Invalid drafts remain editable, stale revisions are rejected, and named elements retain their identity during source reconciliation. Imported XAML is data: no assemblies or arbitrary markup extensions execute.
 
-Create numeric keyframes for position, size, opacity and rotation. Scrub the original keyframe interval or configure delay, speed, auto-reverse, repeat count/duration/forever and HoldEnd/Stop playback in Timing. Duration changes can proportionally retime keys; shortening without scaling rejects excluded keys instead of dropping them.
+**Animation** adds independently timed numeric tracks and editable cubic KeySpline curves. Select a track/key, adjust its delay, duration, speed, repeats or reverse playback, then Apply the draft. Drag spline handles or edit precise control coordinates. Track drafts remain isolated across document tabs; sole-key movement preserves timing and easing metadata. See [animation authoring and reusable APIs](docs/animation.md).
+
+Create numeric keyframes for position, size, opacity and rotation. Scrub the original keyframe interval or configure delay, speed, auto-reverse, repeat count/duration/forever and HoldEnd/Stop playback in Timing. Duration changes can proportionally retime keys. Child-duration edits reject excluded keys instead of dropping them; a shorter parent can deliberately clip explicitly timed tracks without deleting their keys.
 
 In States, create and rename groups, keep one active state per group, and preview independent groups together. Open **Transitions** to author generated From/To rules, duration and cubic easing. Enable **Animate** in States for numeric and solid-color transitions; interruptions start from the current preview. Group Base resets only that group. Conflicting properties across active groups are rejected. In States, enable **Record state** to edit overrides without modifying base properties. Inspect effective values, reset an override and undo the change. Import embedded raster images, preview scoped styles and editable ControlTemplates, author brush resources, and resolve simple JSON sample-data bindings. Layout uses intrinsic Auto and constrained weighted Star Grid tracks; text shares HarfBuzz shaping and styled measurement across layout and drawing.
 
@@ -59,7 +61,7 @@ session.Undo();
 string xaml = XamlCodec.Write(session.Document);
 ```
 
-Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing, Transitions, Paths, Stroke, Brush and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
+Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing, Animation, Transitions, Paths, Stroke, Brush and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
 
 ## Build and run
 
@@ -90,7 +92,7 @@ The renderer draws directly into the **host-owned Skia canvas**, sharing Uno's G
 
 The status bar reports **CPU draw-submission duration**, not GPU completion or end-to-end presentation latency. Browser CI uses Chromium with software-backed WebGL/SwiftShader, not physical GPU benchmarks.
 
-`build.yml` runs portable, compatibility and rendering suites, reruns persistence tests in a trimmed executable with reflection serialization disabled, packs portable libraries and compiles desktop targets on Windows, macOS and Linux. `pages.yml` requires the portable regressions and published Uno browser interactions before deployment, preserves screenshots/diagnostics and checks the public commit identity. `release.yml` tests and packs all eight dual-target/portable packages, verifies framework coverage and emits source/checksum artifacts. Source, test and dependency changes exercise full package creation in PRs and on main; only a separate tag-gated publication job can create a preview release. No automatic public NuGet publication occurs.
+`build.yml` runs portable, compatibility and rendering suites, reruns persistence tests in a trimmed executable with reflection serialization disabled, packs portable libraries and compiles desktop targets on Windows, macOS and Linux. Its Windows job also compares selected animation/spline cases with native WPF and retains the numerical results. `pages.yml` requires the portable regressions and published Uno browser interactions before deployment, preserves screenshots/diagnostics and checks the public commit identity. `release.yml` tests and packs all eight dual-target/portable packages, verifies framework coverage and emits source/checksum artifacts. Source, test and dependency changes exercise full package creation in PRs and on main; only a separate tag-gated publication job can create a preview release. No automatic public NuGet publication occurs.
 
 ## License and attribution
 
