@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Xml.Linq;
 using DesignSpace.Core;
 namespace DesignSpace.Xaml;
@@ -9,104 +10,141 @@ internal static class XamlAnimationCodec
     private static readonly XNamespace X=DesignNode.XamlNamespace;
     private const string RotationPath="(UIElement.RenderTransform).(RotateTransform.Angle)";
     private static readonly string[] Properties=["Canvas.Left","Canvas.Top","Width","Height","Opacity","Rotation"];
-    private static string ReadProperty(string value)=>value==RotationPath ? "Rotation" : value.Trim('(',')');
-    private static string WriteProperty(string property)=>property=="Rotation" ? RotationPath : property.Contains('.') ? "("+property+")" : property;
-    private static double ParseTime(string? text,double fallback)=>TimeSpan.TryParse(text,System.Globalization.CultureInfo.InvariantCulture,out var time) && time.TotalSeconds>=0 ? time.TotalSeconds : fallback;
-    private static string Time(double seconds)=>TimeSpan.FromSeconds(seconds).ToString("c",System.Globalization.CultureInfo.InvariantCulture);
-    private static bool Attributes(XElement e,params string[] names)=>e.Attributes().All(a=>a.IsNamespaceDeclaration || names.Contains(a.Name.ToString()));
-    private static bool Number(string? text,out double number)=>double.TryParse(text,System.Globalization.NumberStyles.Float,System.Globalization.CultureInfo.InvariantCulture,out number) && double.IsFinite(number);
+    private static readonly string[] TimingAttributes=["Duration","RepeatBehavior","AutoReverse","BeginTime","SpeedRatio","FillBehavior"];
+    private static string ReadProperty(string value)=>value==RotationPath?"Rotation":value.Trim('(',')');
+    private static string WriteProperty(string property)=>property=="Rotation"?RotationPath:property.Contains('.')?"("+property+")":property;
+    private static double ParseTime(string? text,double fallback)=>TimeSpan.TryParse(text,CultureInfo.InvariantCulture,out var time)&&time.TotalSeconds>=0?time.TotalSeconds:fallback;
+    private static string Time(double seconds)=>TimeSpan.FromSeconds(seconds).ToString("c",CultureInfo.InvariantCulture);
+    private static bool Attributes(XElement e,params string[] names)=>e.Attributes().All(a=>a.IsNamespaceDeclaration||names.Contains(a.Name.ToString()));
+    private static bool Number(string? text,out double number)=>double.TryParse(text,NumberStyles.Float,CultureInfo.InvariantCulture,out number)&&double.IsFinite(number);
+    private static bool TryTiming(XElement element,double duration,out TrackTiming timing)
+    {
+        timing=new(duration);var repeat=(string?)element.Attribute("RepeatBehavior");var forever=repeat=="Forever";var count=1d;double? span=null;
+        if(repeat is not null&&!forever)
+        {
+            if(repeat.EndsWith('x')){if(!Number(repeat[..^1],out count)||count<0)return false;}
+            else{var value=ParseTime(repeat,-1);if(value<0)return false;span=value;}
+        }
+        var reverse=false;var reverseText=(string?)element.Attribute("AutoReverse");if(reverseText is not null&&!bool.TryParse(reverseText,out reverse))return false;
+        var begin=ParseTime((string?)element.Attribute("BeginTime"),element.Attribute("BeginTime") is null?0:-1);if(begin<0)return false;
+        var speed=1d;if(element.Attribute("SpeedRatio") is { } rate&&(!Number(rate.Value,out speed)||speed<=0))return false;
+        var fill=(string?)element.Attribute("FillBehavior")??"HoldEnd";
+        timing=new(duration,begin,speed,reverse,count,span,forever,fill);
+        try{timing.Validate();return true;}catch(InvalidDataException){return false;}
+    }
     internal static bool TryReadStoryboard(XElement element,IReadOnlyDictionary<string,DesignNode> names,out DesignStoryboard? storyboard)
     {
         storyboard=null;
-        if(!Attributes(element,(X+"Key").ToString(),(X+"Name").ToString(),"Duration","RepeatBehavior","AutoReverse","BeginTime","SpeedRatio","FillBehavior")) return false;
-        var repeat=(string?)element.Attribute("RepeatBehavior"); var forever=repeat=="Forever"; var repeatCount=1d; double? repeatDuration=null;
-        if(repeat is not null && !forever)
-        {
-            if(repeat.EndsWith('x')) { if(!Number(repeat[..^1],out repeatCount) || repeatCount<0) return false; }
-            else { var span=ParseTime(repeat,-1); if(span<0) return false; repeatDuration=span; }
-        }
-        var reverseText=(string?)element.Attribute("AutoReverse"); var reverse=false;
-        if(reverseText is not null && !bool.TryParse(reverseText,out reverse)) return false;
-        var begin=ParseTime((string?)element.Attribute("BeginTime"),element.Attribute("BeginTime") is null ? 0 : -1); if(begin<0) return false;
-        var speed=1d; if(element.Attribute("SpeedRatio") is { } speedAttribute && (!Number(speedAttribute.Value,out speed) || speed<=0)) return false;
-        var fill=(string?)element.Attribute("FillBehavior") ?? "HoldEnd"; if(fill is not ("HoldEnd" or "Stop")) return false;
-        var durationText=(string?)element.Attribute("Duration");
-        var explicitDuration=durationText is not null && durationText!="Automatic";
-        var duration=explicitDuration ? ParseTime(durationText,-1) : 0;
-        if(explicitDuration && duration<=0) return false;
-        var naturalDuration=0d;
-        var tracks=ImmutableArray.CreateBuilder<AnimationTrack>();
+        if(element.Name!=Ns+"Storyboard"||!Attributes(element,TimingAttributes.Concat(new[]{(X+"Key").ToString(),(X+"Name").ToString()}).ToArray()))return false;
+        var name=(string?)element.Attribute(X+"Key")??(string?)element.Attribute(X+"Name");if(name is null)return false;
+        var durationText=(string?)element.Attribute("Duration");var explicitDuration=durationText is not null&&durationText!="Automatic";
+        var duration=explicitDuration?ParseTime(durationText,-1):0;if(explicitDuration&&duration<=0)return false;
+        var naturalDuration=0d;var tracks=ImmutableArray.CreateBuilder<AnimationTrack>();
         foreach(var animation in element.Elements())
         {
-            if(!Attributes(animation,"Storyboard.TargetName","Storyboard.TargetProperty","Duration","From","To","EnableDependentAnimation")) return false;
-            var target=(string?)animation.Attribute("Storyboard.TargetName"); var property=ReadProperty((string?)animation.Attribute("Storyboard.TargetProperty") ?? "");
-            if(target is null || !names.TryGetValue(target,out var node) || !Properties.Contains(property)) return false;
-            if(tracks.Any(t=>t.TargetId==node.Id && t.Property==property)) return false;
-            if(property=="Rotation" && node.PropertyElements.Any(p=>XElement.Parse(p).Name.LocalName.EndsWith(".RenderTransform",StringComparison.Ordinal))) return false;
+            var simple=animation.Name==Ns+"DoubleAnimation";
+            if(!simple&&animation.Name!=Ns+"DoubleAnimationUsingKeyFrames")return false;
+            var allowed=TimingAttributes.Concat(new[]{"Storyboard.TargetName","Storyboard.TargetProperty","EnableDependentAnimation"});
+            if(simple)allowed=allowed.Concat(new[]{"From","To"});
+            if(!Attributes(animation,allowed.ToArray()))return false;
+            if(animation.Attribute("EnableDependentAnimation") is { } dependent&&!bool.TryParse(dependent.Value,out _))return false;
+            var target=(string?)animation.Attribute("Storyboard.TargetName");var property=ReadProperty((string?)animation.Attribute("Storyboard.TargetProperty")??"");
+            if(target is null||!names.TryGetValue(target,out var node)||!Properties.Contains(property)||tracks.Any(t=>t.TargetId==node.Id&&t.Property==property))return false;
+            if(property=="Rotation"&&node.PropertyElements.Any(p=>XElement.Parse(p).Name.LocalName.EndsWith(".RenderTransform",StringComparison.Ordinal)))return false;
+            var childText=(string?)animation.Attribute("Duration");var fixedChild=childText is not null&&childText!="Automatic";
+            var childDuration=fixedChild?ParseTime(childText,-1):simple?1:0;
+            if(fixedChild&&childDuration<=0)return false;
             var keys=ImmutableArray.CreateBuilder<AnimationKey>();
-            if(animation.Name.LocalName=="DoubleAnimation")
+            if(simple)
             {
-                if(animation.HasElements) return false; var end=ParseTime((string?)animation.Attribute("Duration"),animation.Attribute("Duration") is null ? 1 : -1);
-                if(!Number((string?)animation.Attribute("To"),out var to)) return false;
-                var fromText=(string?)animation.Attribute("From"); if(fromText is not null) { if(!Number(fromText,out var from)) return false; keys.Add(new(0,from)); }
-                if(end<=0) return false; keys.Add(new(end,to)); naturalDuration=Math.Max(naturalDuration,end);
+                if(animation.HasElements||!Number((string?)animation.Attribute("To"),out var to))return false;
+                if(animation.Attribute("From") is { } fromText){if(!Number(fromText.Value,out var from))return false;keys.Add(new(0,from));}
+                keys.Add(new(childDuration,to));
             }
-            else if(animation.Name.LocalName=="DoubleAnimationUsingKeyFrames")
+            else
             {
                 foreach(var key in animation.Elements())
                 {
-                    if(key.Name.LocalName is not ("LinearDoubleKeyFrame" or "DiscreteDoubleKeyFrame" or "EasingDoubleKeyFrame") || !Attributes(key,"KeyTime","Value")) return false;
-                    var time=ParseTime((string?)key.Attribute("KeyTime"),-1); if(time<0 || !Number((string?)key.Attribute("Value"),out var value)) return false;
-                    var easing=key.Name.LocalName=="DiscreteDoubleKeyFrame" ? "Discrete" : "Linear";
-                    if(key.Name.LocalName=="EasingDoubleKeyFrame")
+                    var kind=key.Name.LocalName;
+                    if(key.Name.Namespace!=Ns||kind is not ("LinearDoubleKeyFrame" or "DiscreteDoubleKeyFrame" or "EasingDoubleKeyFrame" or "SplineDoubleKeyFrame"))return false;
+                    if(!Attributes(key,kind=="SplineDoubleKeyFrame"?["KeyTime","Value","KeySpline"]:["KeyTime","Value"]))return false;
+                    var keyText=(string?)key.Attribute("KeyTime");double time;
+                    if(keyText?.EndsWith('%')==true)
                     {
-                        var children=key.Elements().ToArray(); if(children.Length!=1 || children[0].Name.LocalName!="EasingDoubleKeyFrame.EasingFunction") return false;
-                        var easingElements=children[0].Elements().ToArray(); if(easingElements.Length!=1) return false; var ease=easingElements[0];
-                        if(ease.Name.LocalName!="CubicEase" || !Attributes(ease,"EasingMode")) return false;
-                        easing=(string?)ease.Attribute("EasingMode") ?? "EaseOut"; if(easing is not ("EaseIn" or "EaseOut" or "EaseInOut")) return false;
+                        if(!fixedChild||!Number(keyText[..^1],out var percent)||percent<0||percent>100)return false;
+                        time=percent/100*childDuration;
                     }
-                    else if(key.HasElements) return false;
-                    keys.Add(new(time,value,easing)); naturalDuration=Math.Max(naturalDuration,time);
+                    else time=ParseTime(keyText,-1);
+                    if(time<0||!Number((string?)key.Attribute("Value"),out var value))return false;
+                    var easing=kind=="DiscreteDoubleKeyFrame"?"Discrete":"Linear";KeySpline? spline=null;
+                    if(kind=="EasingDoubleKeyFrame")
+                    {
+                        var wrappers=key.Elements().ToArray();if(wrappers.Length!=1||wrappers[0].Name!=Ns+"EasingDoubleKeyFrame.EasingFunction"||!Attributes(wrappers[0]))return false;
+                        var elements=wrappers[0].Elements().ToArray();if(elements.Length!=1)return false;var ease=elements[0];
+                        if(ease.Name!=Ns+"CubicEase"||!Attributes(ease,"EasingMode")||ease.HasElements)return false;
+                        easing=(string?)ease.Attribute("EasingMode")??"EaseOut";if(easing is not ("EaseIn" or "EaseOut" or "EaseInOut"))return false;
+                    }
+                    else if(kind=="SplineDoubleKeyFrame")
+                    {
+                        easing="Spline";var raw=(string?)key.Attribute("KeySpline");
+                        if(key.HasElements)
+                        {
+                            if(raw is not null)return false;var wrappers=key.Elements().ToArray();
+                            if(wrappers.Length!=1||wrappers[0].Name!=Ns+"SplineDoubleKeyFrame.KeySpline"||!Attributes(wrappers[0]))return false;
+                            var elements=wrappers[0].Elements().ToArray();if(elements.Length!=1)return false;var curve=elements[0];
+                            if(curve.Name!=Ns+"KeySpline"||curve.HasElements||!Attributes(curve,"ControlPoint1","ControlPoint2"))return false;
+                            raw=((string?)curve.Attribute("ControlPoint1")??"0,0")+" "+((string?)curve.Attribute("ControlPoint2")??"1,1");
+                        }
+                        try{spline=raw is null?KeySpline.Linear:KeySpline.Parse(raw);}catch(Exception e)when(e is FormatException or OverflowException or InvalidDataException){return false;}
+                    }
+                    else if(key.HasElements)return false;
+                    keys.Add(new(time,value,easing){Spline=spline});
                 }
+                if(!fixedChild)childDuration=keys.Select(k=>k.Time).DefaultIfEmpty(0).Max();
+                if(childDuration<=0)childDuration=1;
             }
-            else return false;
-            if(keys.Count==0 || keys.GroupBy(k=>k.Time).Any(g=>g.Count()>1)) return false;
-            if(animation.Name.LocalName=="DoubleAnimationUsingKeyFrames" && animation.Attribute("Duration") is { } childDuration)
-            {
-                var end=ParseTime(childDuration.Value,-1);
-                if(end<=0 || keys.Any(k=>k.Time>end)) return false;
-                naturalDuration=Math.Max(naturalDuration,end);
-            }
-            if(explicitDuration && keys.Any(k=>k.Time>duration)) return false; // Preserve clipped timelines, do not silently lengthen them.
-            tracks.Add(new(node.Id,property,keys.ToImmutable()));
+            if(keys.Count==0||keys.GroupBy(k=>k.Time).Any(g=>g.Count()>1)||keys.Any(k=>k.Time>childDuration)||!TryTiming(animation,childDuration,out var timing))return false;
+            var end=timing.Loop?double.PositiveInfinity:timing.BeginTime+(timing.RepeatDuration??timing.Duration*(timing.AutoReverse?2:1)*timing.RepeatCount)/timing.SpeedRatio;
+            naturalDuration=Math.Max(naturalDuration,end);
+            tracks.Add(new(node.Id,property,keys.ToImmutable()){Timing=timing});
         }
-        var name=(string?)element.Attribute(X+"Key") ?? (string?)element.Attribute(X+"Name"); if(name is null) return false;
-        storyboard=new(Guid.NewGuid(),name,explicitDuration ? duration : Math.Max(.001,naturalDuration==0 ? 2 : naturalDuration),tracks.ToImmutable(),forever)
-        {
-            AutoReverse=reverse,BeginTime=begin,SpeedRatio=speed,RepeatCount=repeatCount,RepeatDuration=repeatDuration,FillBehavior=fill
-        };
+        // A finite parent may clip a repeating/longer child; Automatic + infinite child cannot be represented by a finite ruler.
+        if(!explicitDuration&&!double.IsFinite(naturalDuration))return false;
+        if(!explicitDuration)duration=naturalDuration==0?2:naturalDuration;
+        if(!TryTiming(element,duration,out var parent))return false;
+        storyboard=new(Guid.NewGuid(),name,duration,tracks.ToImmutable(),parent.Loop)
+        {AutoReverse=parent.AutoReverse,BeginTime=parent.BeginTime,SpeedRatio=parent.SpeedRatio,RepeatCount=parent.RepeatCount,RepeatDuration=parent.RepeatDuration,FillBehavior=parent.FillBehavior};
         return true;
+    }
+    private static void WriteTiming(XElement element,TrackTiming timing)
+    {
+        element.SetAttributeValue("Duration",Time(timing.Duration));
+        if(timing.Loop)element.SetAttributeValue("RepeatBehavior","Forever");
+        else if(timing.RepeatDuration is { } span)element.SetAttributeValue("RepeatBehavior",Time(span));
+        else if(timing.RepeatCount!=1)element.SetAttributeValue("RepeatBehavior",timing.RepeatCount.ToString("R",CultureInfo.InvariantCulture)+"x");
+        if(timing.AutoReverse)element.SetAttributeValue("AutoReverse","True");
+        if(timing.BeginTime!=0)element.SetAttributeValue("BeginTime",Time(timing.BeginTime));
+        if(timing.SpeedRatio!=1)element.SetAttributeValue("SpeedRatio",timing.SpeedRatio.ToString("R",CultureInfo.InvariantCulture));
+        if(timing.FillBehavior!="HoldEnd")element.SetAttributeValue("FillBehavior",timing.FillBehavior);
     }
     internal static XElement WriteStoryboard(DesignStoryboard board,IReadOnlyDictionary<Guid,DesignNode> nodes)
     {
-        var sb=new XElement(Ns+"Storyboard",new XAttribute(X+"Key",board.Name),new XAttribute("Duration",Time(board.Duration))); if(board.Loop) sb.SetAttributeValue("RepeatBehavior","Forever");
-        else if(board.RepeatDuration is { } repeatDuration) sb.SetAttributeValue("RepeatBehavior",Time(repeatDuration));
-        else if(board.RepeatCount!=1) sb.SetAttributeValue("RepeatBehavior",board.RepeatCount.ToString("R",System.Globalization.CultureInfo.InvariantCulture)+"x");
-        if(board.AutoReverse) sb.SetAttributeValue("AutoReverse","True");
-        if(board.BeginTime!=0) sb.SetAttributeValue("BeginTime",Time(board.BeginTime));
-        if(board.SpeedRatio!=1) sb.SetAttributeValue("SpeedRatio",board.SpeedRatio.ToString("R",System.Globalization.CultureInfo.InvariantCulture));
-        if(board.FillBehavior!="HoldEnd") sb.SetAttributeValue("FillBehavior",board.FillBehavior);
+        var sb=new XElement(Ns+"Storyboard",new XAttribute(X+"Key",board.Name));
+        WriteTiming(sb,new(board.Duration,board.BeginTime,board.SpeedRatio,board.AutoReverse,board.RepeatCount,board.RepeatDuration,board.Loop,board.FillBehavior));
         foreach(var track in board.Tracks)
         {
-            if(!Properties.Contains(track.Property)) throw new InvalidDataException("Unsupported numeric animation property: "+track.Property);
-            var target=nodes[track.TargetId]; if(target.Get(DesignNode.NameKey,target.Get("Name")).Length==0) throw new InvalidDataException("Animation targets must have explicit XAML names.");
+            AnimationValidation.ValidateTrack(track,board.Duration);
+            if(!Properties.Contains(track.Property))throw new InvalidDataException("Unsupported numeric animation property: "+track.Property);
+            var target=nodes[track.TargetId];if(target.Get(DesignNode.NameKey,target.Get("Name")).Length==0)throw new InvalidDataException("Animation targets must have explicit XAML names.");
             var animation=new XElement(Ns+"DoubleAnimationUsingKeyFrames",new XAttribute("Storyboard.TargetName",target.Name),new XAttribute("Storyboard.TargetProperty",WriteProperty(track.Property)));
-            if(track.Property is "Canvas.Left" or "Canvas.Top" or "Width" or "Height") animation.SetAttributeValue("EnableDependentAnimation","True");
+            WriteTiming(animation,track.Timing??new TrackTiming(board.Duration));
+            if(track.Property is "Canvas.Left" or "Canvas.Top" or "Width" or "Height")animation.SetAttributeValue("EnableDependentAnimation","True");
             foreach(var key in track.Keys.OrderBy(k=>k.Time))
             {
-                var kind=key.Easing=="Discrete" ? "DiscreteDoubleKeyFrame" : key.Easing=="Linear" ? "LinearDoubleKeyFrame" : "EasingDoubleKeyFrame";
-                var k=new XElement(Ns+kind,new XAttribute("KeyTime",Time(key.Time)),new XAttribute("Value",Numbers.Format(key.Value)));
-                if(kind=="EasingDoubleKeyFrame") k.Add(new XElement(Ns+"EasingDoubleKeyFrame.EasingFunction",new XElement(Ns+"CubicEase",new XAttribute("EasingMode",key.Easing))));
+                var kind=key.Easing switch{"Discrete"=>"DiscreteDoubleKeyFrame","Linear"=>"LinearDoubleKeyFrame","Spline"=>"SplineDoubleKeyFrame",_=>"EasingDoubleKeyFrame"};
+                var k=new XElement(Ns+kind,new XAttribute("KeyTime",Time(key.Time)),new XAttribute("Value",key.Value.ToString("R",CultureInfo.InvariantCulture)));
+                if(kind=="SplineDoubleKeyFrame")k.SetAttributeValue("KeySpline",key.Spline!.ToXaml());
+                if(kind=="EasingDoubleKeyFrame")k.Add(new XElement(Ns+"EasingDoubleKeyFrame.EasingFunction",new XElement(Ns+"CubicEase",new XAttribute("EasingMode",key.Easing))));
                 animation.Add(k);
             }
             sb.Add(animation);

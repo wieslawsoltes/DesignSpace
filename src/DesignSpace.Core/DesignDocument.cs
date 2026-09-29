@@ -34,8 +34,8 @@ public sealed record DesignNode
     public DesignNode Remove(IReadOnlySet<Guid> ids)=>DesignTree.Remove(this,ids);
     public static DesignNode Create(string type,string name,double x=0,double y=0,double width=120,double height=80)=>new DesignNode { Type=type }.Set(NameKey,name).Set("Canvas.Left",x).Set("Canvas.Top",y).Set("Width",width).Set("Height",height);
 }
-public sealed record AnimationKey(double Time,double Value,string Easing="Linear");
-public sealed record AnimationTrack(Guid TargetId,string Property,ImmutableArray<AnimationKey> Keys);
+public sealed partial record AnimationKey(double Time,double Value,string Easing="Linear");
+public sealed partial record AnimationTrack(Guid TargetId,string Property,ImmutableArray<AnimationKey> Keys);
 public sealed record DesignStoryboard(Guid Id,string Name,double Duration,ImmutableArray<AnimationTrack> Tracks,bool Loop=false)
 {
     public bool AutoReverse { get; init; }
@@ -117,9 +117,7 @@ public static partial class DocumentValidator
             foreach(var track in board.Tracks)
             {
                 if(track is null || track.Keys.IsDefault || !tracks.Add((track.TargetId,track.Property)) || !ids.Contains(track.TargetId)) throw new InvalidDataException("Invalid, duplicate or dangling animation track.");
-                if(track.Keys.Any(k=>k is null || !double.IsFinite(k.Time) || !double.IsFinite(k.Value) || k.Time<0 || k.Time>board.Duration)) throw new InvalidDataException("Invalid animation keyframe.");
-                if(track.Keys.Any(k=>k.Easing is not ("Linear" or "Discrete" or "EaseIn" or "EaseOut" or "EaseInOut"))) throw new InvalidDataException("Unsupported keyframe easing.");
-                if(track.Keys.GroupBy(k=>k.Time).Any(g=>g.Count()>1)) throw new InvalidDataException("Duplicate keyframe time.");
+                AnimationValidation.ValidateTrack(track,board.Duration);
             }
         }
         ValidateStateGroups(doc);
