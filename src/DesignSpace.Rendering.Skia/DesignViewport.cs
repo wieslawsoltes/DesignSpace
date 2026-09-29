@@ -18,16 +18,18 @@ public sealed class DesignViewport
     public double SnapTolerance { get; set; }=6;
     public double DefaultMargin { get; set; }=8;
     public double DefaultPadding { get; set; }=8;
+    public bool RenderEffects { get; set; }=true;
+    public double EffectsZoomThreshold { get; set; }=8;
     public ArtboardSettings CaptureArtboardSettings()=>new()
     {
         ShowGrid=ShowGrid,ShowRulers=ShowRulers,SnapToGrid=SnapToGrid,GridSize=GridSize,
-        SnapToSnaplines=SnapToSnaplines,SnapTolerance=SnapTolerance,DefaultMargin=DefaultMargin,DefaultPadding=DefaultPadding
+        SnapToSnaplines=SnapToSnaplines,SnapTolerance=SnapTolerance,DefaultMargin=DefaultMargin,DefaultPadding=DefaultPadding,RenderEffects=RenderEffects,EffectsZoomThreshold=EffectsZoomThreshold
     };
     public void ApplyArtboardSettings(ArtboardSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);settings.Validate();
         ShowGrid=settings.ShowGrid;ShowRulers=settings.ShowRulers;SnapToGrid=settings.SnapToGrid;GridSize=settings.GridSize;
-        SnapToSnaplines=settings.SnapToSnaplines;SnapTolerance=settings.SnapTolerance;DefaultMargin=settings.DefaultMargin;DefaultPadding=settings.DefaultPadding;
+        SnapToSnaplines=settings.SnapToSnaplines;SnapTolerance=settings.SnapTolerance;DefaultMargin=settings.DefaultMargin;DefaultPadding=settings.DefaultPadding;RenderEffects=settings.RenderEffects;EffectsZoomThreshold=settings.EffectsZoomThreshold;
     }
     public DPoint ScreenToWorld(DPoint p)=>new((p.X-PanX)/Zoom,(p.Y-PanY)/Zoom);
     public DPoint WorldToScreen(DPoint p)=>new(p.X*Zoom+PanX,p.Y*Zoom+PanY);

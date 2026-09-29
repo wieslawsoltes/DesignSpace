@@ -39,7 +39,7 @@ public sealed class BrushResolver
                 var container=e.Elements().FirstOrDefault(c=>c.Name.LocalName=="ResourceDictionary")??e;
                 foreach(var item in container.Elements())if(item.Attribute(XName.Get("Key",DesignNode.XamlNamespace)) is { } key)resources[key.Value]=item;
             }
-            else if(new[]{"Fill","Stroke","Background","Foreground","BorderBrush","OpacityMask"}.Contains(property))
+            else if(new[]{"Fill","Stroke","Background","Foreground","BorderBrush","OpacityMask","Effect"}.Contains(property))
             {
                 var children=e.Elements().ToArray();
                 // Preserve invalid/unsupported property payloads for a per-node diagnostic.

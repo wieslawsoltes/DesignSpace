@@ -15,6 +15,9 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
     public long PathCacheHits=>_paths.Hits;
     private readonly SkiaTextService _text=new();
     private readonly EmbeddedImages _images=new();
+    private readonly EffectFilterCache _effects=new();
+    public long EffectBuildCount=>_effects.Builds;
+    public long EffectCacheHits=>_effects.Hits;
     private LayoutSnapshot? _indexed;
     private Dictionary<Guid,LayoutEntry[]> _children=[];
     private readonly List<string> _diagnostics=[];
@@ -42,7 +45,7 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         if(layout.Entries.Count==0)return;
         var art=layout.Entries[0].Bounds;var a=view.WorldToScreen(new(art.X,art.Y));
         Fill(c,SKRect.Create((float)a.X+5,(float)a.Y+6,(float)(art.Width*view.Zoom),(float)(art.Height*view.Zoom)),new SKColor(20,20,22,140));
-        c.Save();c.Translate((float)view.PanX,(float)view.PanY);c.Scale((float)view.Zoom);DrawScene(c,layout);
+        c.Save();c.Translate((float)view.PanX,(float)view.PanY);c.Scale((float)view.Zoom);DrawScene(c,layout,view.RenderEffects && view.Zoom<=view.EffectsZoomThreshold);
         if(view.ShowGrid&&!preview)
         {
             c.Save();c.ClipRect(Rect(art));var step=Math.Max(4,view.GridSize);if(step*view.Zoom<5)step*=4;
@@ -70,14 +73,23 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         _brushResolver=new BrushResolver(layout.Entries[0].Node);
         _children=layout.Entries.Where(e=>e.ParentId is not null).GroupBy(e=>e.ParentId!.Value).ToDictionary(g=>g.Key,g=>g.ToArray());
     }
-    public void DrawScene(SKCanvas c,LayoutSnapshot layout)
+    public void DrawScene(SKCanvas c,LayoutSnapshot layout,bool renderEffects=true)
     {
         _diagnostics.Clear();if(layout.Entries.Count==0)return;Index(layout);
         void Walk(LayoutEntry entry)
         {
             if(!entry.IsEffectivelyVisible||entry.Opacity<=0)return;
             var outerCount=c.SaveCount;c.Save();Concat(c,entry.LocalTransform);var b=Rect(entry.Bounds);var n=entry.Node;
-            var opacity=Math.Clamp(n.Number("Opacity",1),0,1);using var layer=opacity<1 ? new SKPaint{Color=SKColors.White.WithAlpha((byte)(opacity*255))} : null;
+            SKImageFilter? effect=null;
+            try
+            {
+                if(renderEffects&&_brushResolver?.Resolve(n.Id,"Effect") is { } source)effect=_effects.Get(source);
+            }
+            catch(Exception ex)when(ex is InvalidDataException or InvalidOperationException or ArgumentException)
+            {if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);}
+            var opacity=Math.Clamp(n.Number("Opacity",1),0,1);
+            // The layer paint retains the native filter while child drawing may evict its cache entry.
+            using var layer=opacity<1||effect is not null ? new SKPaint{Color=SKColors.White.WithAlpha((byte)(opacity*255)),ImageFilter=effect} : null;
             SKPaint? mask=null;
             try
             {
@@ -164,5 +176,5 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
         using var surface=SKSurface.Create(new SKImageInfo((int)w,(int)h));if(surface is null)throw new InvalidOperationException("Unable to allocate export surface.");
         surface.Canvas.Clear(SKColors.Transparent);surface.Canvas.Scale(scale);DrawScene(surface.Canvas,layout);using var image=surface.Snapshot();using var data=image.Encode(SKEncodedImageFormat.Png,100);return data.ToArray();
     }
-    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_strokeShapes.Dispose();_shapePaint.Dispose();_shapeSources.Clear();_basicShapes.Clear();_text.Dispose();_images.Dispose();_children.Clear();_brushShaders.Dispose();_brushResolver=null;_indexed=null;}
+    public void Dispose(){_fill.Dispose();_stroke.Dispose();_paths.Dispose();_strokeShapes.Dispose();_shapePaint.Dispose();_shapeSources.Clear();_basicShapes.Clear();_text.Dispose();_images.Dispose();_effects.Dispose();_children.Clear();_brushShaders.Dispose();_brushResolver=null;_indexed=null;}
 }

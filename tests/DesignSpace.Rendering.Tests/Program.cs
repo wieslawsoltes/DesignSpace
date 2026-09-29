@@ -78,6 +78,7 @@ Test("layout uses the renderer's styled text metrics",()=>{using var renderer=ne
 Test("repainting avoids rewrapping a warm paragraph",()=>{var n=Node("TextBlock","T",10,10,130,200).Set("Text","A wrapped paragraph rendered more than once.").Set("TextWrapping","Wrap");using var renderer=new DesignRenderer();var layout=new LayoutEngine(renderer).Arrange(Root(n));renderer.ExportPng(layout,1);var count=renderer.TextLayoutCount;renderer.ExportPng(layout,1);Equal(count,renderer.TextLayoutCount);});
 Test("recorded state brush overrides base inline gradient pixels",()=>{var root=Parse("<Rectangle x:Name='R' Width='40' Height='40'><Rectangle.Fill><LinearGradientBrush><GradientStop Offset='0' Color='Blue'/><GradientStop Offset='1' Color='White'/></LinearGradientBrush></Rectangle.Fill></Rectangle>");var id=root.Children[0].Id;var state=new DesignState("Active",[new(id,"Fill","Red")]);using var renderer=new DesignRenderer();var layout=new LayoutEngine(renderer).Arrange(AnimationEngine.EvaluateLocal(root,null,0,state));using var bitmap=SKBitmap.Decode(renderer.ExportPng(layout,1));Check(bitmap.GetPixel(20,20).Red>240&&bitmap.GetPixel(20,20).Blue<10);});
 
+var effects=EffectTests.Run();passed+=effects.Passed;failed+=effects.Failed;
 var snaplines=SnaplineTests.Run();passed+=snaplines.Passed;failed+=snaplines.Failed;
 var brushes=BrushTests.Run();passed+=brushes.Passed;failed+=brushes.Failed;
 Directory.CreateDirectory("artifacts/verification");
