@@ -37,6 +37,8 @@ The **Animation** inspector also authors all eleven built-in easing families (in
 
 **Additive and cumulative keyframes** can offset the base/state value and accumulate the final key value across child repetitions. The Animation inspector keeps these options in the same draft and transaction as timing and key edits. Reverse-parent repeat boundaries follow the native WPF convention. See [composition semantics, examples and verification](docs/animation-composition.md).
 
+**Artboard snaplines** align Canvas siblings and multi-selections by edges/centers, show default margin/padding distances, and snap resize handles without moving the fixed edge. **Guides**, **Snap**, **Grid** and **Options** expose independent controls; preferences and invalid drafts follow document tabs and workspace recovery. See [artboard authoring, APIs and verification boundaries](docs/artboard.md).
+
 ## Eight reusable libraries
 
 | Package | Responsibility |
