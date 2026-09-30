@@ -20,15 +20,15 @@ internal static class Program
             if(value.StartsWith('<'))value=(string?)XElement.Parse(value).Attribute("Color")??"Transparent";
             return ((Color)ColorConverter.ConvertFromString(value)).ToString();
         }
-        foreach(var active in new[]{false,true})foreach(var local in new[]{false,true})foreach(var styleTrigger in new[]{false,true})foreach(var named in new[]{false,true})foreach(var multi in new[]{false,true})
+        foreach(var parentEnabled in new[]{false,true})foreach(var active in new[]{false,true})foreach(var local in new[]{false,true})foreach(var styleTrigger in new[]{false,true})foreach(var named in new[]{false,true})foreach(var multi in new[]{false,true})
         {
-            var name=$"active={active}, local={local}, style={styleTrigger}, named={named}, multi={multi}";
+            var name=$"parentEnabled={parentEnabled}, active={active}, local={local}, style={styleTrigger}, named={named}, multi={multi}";
             try
             {
                 var setter=$"<Setter {(named?"TargetName='Chrome'":"")} Property='Background' Value='Red'/>";
                 var rule=multi?$"<MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='Active'/><Condition Property='IsEnabled' Value='True'/></MultiTrigger.Conditions>{setter}</MultiTrigger>":$"<Trigger Property='Tag' Value='Active'>{setter}</Trigger>";
-                var style=styleTrigger?"<Style.Triggers><Trigger Property='Tag' Value='Active'><Setter Property='Background' Value='Yellow'/></Trigger></Style.Triggers>":"";
-                var xml=$"<Canvas xmlns='{ns}' xmlns:x='{x}' Width='400' Height='300'><Canvas.Resources><ControlTemplate x:Key='T' TargetType='Button'><Border x:Name='Chrome' Background='{{TemplateBinding Background}}'/><ControlTemplate.Triggers>{rule}</ControlTemplate.Triggers></ControlTemplate><Style TargetType='Button'><Setter Property='Background' Value='Blue'/>{style}</Style></Canvas.Resources><Button x:Name='Target' Width='120' Height='60' Template='{{StaticResource T}}' Tag='{(active?"Active":"Rest")}' {(local?"Background='Lime'":"")}/></Canvas>";
+                var style=styleTrigger?"<Style.Triggers><MultiTrigger><MultiTrigger.Conditions><Condition Property='Tag' Value='Active'/><Condition Property='IsEnabled' Value='True'/></MultiTrigger.Conditions><Setter Property='Background' Value='Yellow'/></MultiTrigger></Style.Triggers>":"";
+                var xml=$"<Canvas xmlns='{ns}' xmlns:x='{x}' Width='400' Height='300' IsEnabled='{parentEnabled}'><Canvas.Resources><ControlTemplate x:Key='T' TargetType='Button'><Border x:Name='Chrome' Background='{{TemplateBinding Background}}'/><ControlTemplate.Triggers>{rule}</ControlTemplate.Triggers></ControlTemplate><Style TargetType='Button'><Setter Property='IsEnabled' Value='True'/><Setter Property='Background' Value='Blue'/>{style}</Style></Canvas.Resources><Button x:Name='Target' Width='120' Height='60' Template='{{StaticResource T}}' Tag='{(active?"Active":"Rest")}' {(local?"Background='Lime'":"")}/></Canvas>";
                 var native=(Canvas)XamlReader.Parse(xml);var button=(Button)native.Children[0];
                 native.Measure(new Size(400,300));native.Arrange(new Rect(0,0,400,300));native.UpdateLayout();button.ApplyTemplate();
                 var border=(Border)button.Template.FindName("Chrome",button);var expected=((SolidColorBrush)border.Background).Color.ToString();
@@ -46,7 +46,7 @@ internal static class Program
             catch(Exception e){failed++;results.Add(new{name,passed=false,error=e.ToString()});Console.Error.WriteLine("FAIL WPF template: "+name+": "+e);}
         }
         Directory.CreateDirectory("artifacts/verification");
-        File.WriteAllText("artifacts/verification/wpf-template-results.json",JsonSerializer.Serialize(new{passed,failed,scope="Native WPF effective brush values for local/style/template and named-part Trigger/MultiTrigger precedence and reset. Not Blend UI pixels or complete dependency-property semantics.",results},new JsonSerializerOptions{WriteIndented=true}));
+        File.WriteAllText("artifacts/verification/wpf-template-results.json",JsonSerializer.Serialize(new{passed,failed,scope="Native WPF effective brush values for local/style/template and named-part Trigger/MultiTrigger precedence, inherited disabled coercion and reset. Not Blend UI pixels or complete dependency-property semantics.",results},new JsonSerializerOptions{WriteIndented=true}));
         Console.WriteLine($"WPF templates: {passed} passed, {failed} failed.");return failed==0?0:1;
     }
 }

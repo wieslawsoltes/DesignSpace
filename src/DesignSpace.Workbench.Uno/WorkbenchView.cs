@@ -52,7 +52,7 @@ public sealed partial class WorkbenchView : Grid,IDisposable
     public WorkbenchView(IWorkbenchPlatform platform,DesignDocument? document=null)
     {
         _platform=platform; Workspace=new(document);Session=Workspace.Session;
-        Designer=new(Session) { PreviewResolver=DesignData.Resolve };
+        Designer=new(Session);
         Properties=new(Session); Timeline=new(Session); Outline=new(Session); States=new(Session); Resources=new(Session); Data=new(Session);
         BuildWorkspace();
         Session.DocumentChanged+=DocumentChanged; Session.SelectionChanged+=SelectionChanged;

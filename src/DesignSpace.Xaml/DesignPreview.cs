@@ -120,7 +120,7 @@ public static class DesignPreview
             if(input.Checked.TryGetValue(n.Id,out var check))n=n.Set("IsChecked",check?.ToString()??"{x:Null}");
             return parentEnabled?n:n.Set("IsEnabled","False");
         }
-        (DesignNode Node,HashSet<string> TriggerKeys) Style(DesignNode source,DesignNode n,Scope scope)
+        (DesignNode Node,HashSet<string> TriggerKeys) Style(DesignNode source,DesignNode n,Scope scope,bool parentEnabled)
         {
             var local=Locals(source);var setters=new Dictionary<string,(XElement Setter,Scope Scope)>(StringComparer.Ordinal);
             var styles=new List<(XElement Style,Scope Scope)>();var seen=new HashSet<XElement>();
@@ -146,6 +146,7 @@ public static class DesignPreview
                     n=Assign(n,new(property,element.ToString(SaveOptions.DisableFormatting),null,true));
             }
             // All rules read one immutable, styled snapshot. Feedback within a collection rejects.
+            if(!parentEnabled)n=n.Set("IsEnabled","False");
             var snapshot=n;var keys=new HashSet<string>(StringComparer.Ordinal);
             foreach(var item in styles)
             {
@@ -168,7 +169,7 @@ public static class DesignPreview
         DesignNode Walk(DesignNode source,Scope? parent,int depth,bool allowTemplate=true,bool parentEnabled=true)
         {
             if(depth>64||++expanded>40000)throw new InvalidDataException("Preview expansion exceeds its node/depth budget.");
-            var scope=Resources(source,parent);var styled=Style(source,Input(source,parentEnabled),scope);var n=styled.Node;
+            var scope=Resources(source,parent);var styled=Style(source,Input(source,parentEnabled),scope,parentEnabled);var n=styled.Node;
             if(!parentEnabled)n=n.Set("IsEnabled","False");
             var enabled=!bool.TryParse(n.Get("IsEnabled"),out var isEnabled)||isEnabled;
             var children=n.Children.Select(c=>Walk(c,scope,depth+1,parentEnabled:enabled)).ToImmutableArray();

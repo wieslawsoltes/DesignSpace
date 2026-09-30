@@ -65,6 +65,7 @@ Test("unchanged context reuses the complete preview tree",()=>{var d=Fixture();v
 Test("preview changes never create session revisions or undo entries",()=>{var d=Fixture();var session=new DesignSession(d);Preview(d,true,true);Check(session.Revision==0&&!session.CanUndo&&ReferenceEquals(session.Document,d));});
 Test("trigger-generated border pixels reach the shared renderer",()=>{var d=Fixture(local:"Background='Blue'");using var renderer=new DesignRenderer();var p=Preview(d,true);using var image=SKBitmap.Decode(renderer.ExportPng(new LayoutEngine(renderer).Arrange(p),1));Check(image.GetPixel(45,65).Red>240&&image.GetPixel(45,65).Blue<10);});
 Test("source and native roundtrip retain complete trigger declarations",()=>{var d=Fixture();var decoded=NativeDocumentCodec.Read(NativeDocumentCodec.Write(d));var again=XamlCodec.Parse(XamlCodec.Write(decoded)).Document;var p=Preview(again,true);Check(Brush(p,Part(p))=="Red");});
+var authoring=TemplateAuthoringTests.Run();passed+=authoring.Passed;failed+=authoring.Failed;
 Directory.CreateDirectory("artifacts/verification");
 File.WriteAllText("artifacts/verification/template-results.json",JsonSerializer.Serialize(new{passed,failed,warmEvaluations=10000,warmBytes,scope="Inert property/multi-trigger authoring preview; not complete WPF dependency properties or Blend UI pixels."}));
 Console.WriteLine($"{passed} template tests passed; {failed} failed.");return failed==0?0:1;

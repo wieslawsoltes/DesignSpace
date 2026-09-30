@@ -18,7 +18,7 @@ public sealed partial class DesignerSurface
         _surface.PointerCaptureLost+=(_,_)=>{if(_previewCaptured){_previewCaptured=false;_previewPress=null;UpdatePreviewInput(PreviewContext.State with{Pressed=null});}};
         _focus.LostFocus+=(_,_)=>{if(IsPreview){_previewKey=null;UpdatePreviewInput(PreviewContext.State with{Focused=null,Pressed=null});}};
         _focus.AddHandler(UIElement.KeyDownEvent,new KeyEventHandler((_,e)=>
-        {if(IsPreview&&!DesignerKeys.Control&&e.Key is VirtualKey.Tab or VirtualKey.Space or VirtualKey.Enter or VirtualKey.Escape&&HandlePreviewKey(e.Key,false,DesignerKeys.Shift))e.Handled=true;}),true);
+        {if(IsPreview&&!DesignerKeys.Control&&(e.Key is VirtualKey.Tab or VirtualKey.Space or VirtualKey.Enter or VirtualKey.Escape)&&HandlePreviewKey(e.Key,false,DesignerKeys.Shift))e.Handled=true;}),true);
         _focus.AddHandler(UIElement.KeyUpEvent,new KeyEventHandler((_,e)=>
         {
             if(!IsPreview||_previewKey!=e.Key)return;
@@ -33,7 +33,7 @@ public sealed partial class DesignerSurface
     }
     private void UpdatePreviewInput(PreviewInteractionState state)
     {if(PreviewContext.Update(state))InvalidateLayout();}
-    private bool PreviewEnabled(Guid id)=>Layout.ById.TryGetValue(id,out var entry)&&entry.IsEffectivelyVisible&&entry.Node.Get("IsEnabled","True") is not ("False" or "false");
+    private bool PreviewEnabled(Guid id)=>Layout.ById.TryGetValue(id,out var entry)&&entry.IsEffectivelyVisible&&(!bool.TryParse(entry.Node.Get("IsEnabled"),out var enabled)||enabled);
     private Guid? PreviewHit(DPoint world)
     {
         foreach(var hit in Layout.HitStack(world))
@@ -68,7 +68,9 @@ public sealed partial class DesignerSurface
         if(node.Type is "CheckBox" or "ToggleButton" or "RadioButton")
         {
             var state=PreviewContext.State;var current=Layout.ById[id].Node.Get("IsChecked","False");
-            bool? value=current is "True" or "true"?node.Get("IsThreeState")=="True"?null:false:true;
+            var isChecked=bool.TryParse(current,out var check)&&check;
+            var threeState=bool.TryParse(node.Get("IsThreeState"),out var three)&&three;
+            bool? value=isChecked?threeState?null:false:true;
             if(current=="{x:Null}")value=false;
             var checks=state.Checked;
             if(node.Type=="RadioButton")
