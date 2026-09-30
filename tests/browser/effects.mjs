@@ -90,7 +90,8 @@ try{
     await click('Effect preset Blur');await edit('Effect Radius','12');const s=await apply();assert.match(node(s).effect,/BlurEffect/);assert.match(node(s).effect,/KernelType="Gaussian"/);const p=await pixels();assert.ok(p(195,200).r<248&&p(195,200).r>100);assert.ok(blue(p(250,200)));await page.screenshot({path:directory+'/effect-blur-editor.png'});
   });
   await check('Box kernel preserves its own radius and XML metadata',async()=>{
-    await choose('Effect Kernel',1);await edit('Effect Radius','3');const s=await apply();assert.match(node(s).effect,/KernelType="Box"/);assert.match(node(s).effect,/Radius="3"/);assert.ok((await pixels())(198,200).r<250);
+    await choose('Effect Kernel',1);await edit('Effect Radius','3');const s=await apply();assert.match(node(s).effect,/KernelType="Box"/);assert.match(node(s).effect,/Radius="3"/);// Sample away from the white left-middle resize handle at y=200.
+    const p=await pixels();for(const y of [185,215])assert.ok(p(198,y).r<250,'Box blur halo away from selection adorners');
   });
   await check('invalid effect draft cannot partially apply or erase valid values',async()=>{
     const before=await snapshot();await edit('Effect Radius','NaN');await click('Apply effect settings');await settle();const s=await snapshot();assert.equal(s.revision,before.revision);assert.equal(node(s).effect,node(before).effect);assert.ok(s.status.includes('finite'));await click('Reload effect settings');
