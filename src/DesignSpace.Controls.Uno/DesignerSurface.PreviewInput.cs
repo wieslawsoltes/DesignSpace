@@ -17,14 +17,23 @@ public sealed partial class DesignerSurface
         _surface.PointerExited+=(_,_)=>{if(IsPreview)UpdatePreviewInput(PreviewContext.State with{Hovered=null,Pressed=null});};
         _surface.PointerCaptureLost+=(_,_)=>{if(_previewCaptured){_previewCaptured=false;_previewPress=null;UpdatePreviewInput(PreviewContext.State with{Pressed=null});}};
         _focus.LostFocus+=(_,_)=>{if(IsPreview){_previewKey=null;UpdatePreviewInput(PreviewContext.State with{Focused=null,Pressed=null});}};
-        _focus.AddHandler(UIElement.KeyDownEvent,new KeyEventHandler((_,e)=>
-        {if(IsPreview&&!DesignerKeys.Control&&(e.Key is VirtualKey.Tab or VirtualKey.Space or VirtualKey.Enter or VirtualKey.Escape)&&HandlePreviewKey(e.Key,false,DesignerKeys.Shift))e.Handled=true;}),true);
-        _focus.AddHandler(UIElement.KeyUpEvent,new KeyEventHandler((_,e)=>
+        // Intercept at the tunneling stage, before Uno's focus proxy Button processes
+        // Tab/Space/Enter. A handled bubbling listener is too late for default focus
+        // navigation and can receive the same key after the focused element changes.
+        // Both supported hosts use Uno's Skia keyboard routing.
+        _focus.PreviewKeyDown+=(_,e)=>
         {
-            if(!IsPreview||_previewKey!=e.Key)return;
+            if(!e.Handled&&IsPreview&&!DesignerKeys.Control&&
+               (e.Key is VirtualKey.Tab or VirtualKey.Space or VirtualKey.Enter or VirtualKey.Escape)&&
+               HandlePreviewKey(e.Key,false,DesignerKeys.Shift))e.Handled=true;
+        };
+        _focus.PreviewKeyUp+=(_,e)=>
+        {
+            if(e.Handled||!IsPreview||_previewKey!=e.Key)return;
             var id=PreviewContext.State.Pressed;_previewKey=null;UpdatePreviewInput(PreviewContext.State with{Pressed=null});
-            if(id is { } target)ActivatePreview(target);e.Handled=true;
-        }),true);
+            e.Handled=true;
+            if(id is { } target)ActivatePreview(target);
+        };
     }
     private void ResetPreviewInput()
     {
