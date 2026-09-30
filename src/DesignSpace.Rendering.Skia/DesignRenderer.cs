@@ -85,7 +85,7 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
             SKImageFilter? effect=null;
             try
             {
-                if(renderEffects&&_brushResolver?.Resolve(n.Id,"Effect") is { } source)effect=_effects.Get(source,EffectMode);
+                if(renderEffects&&_brushResolver?.Resolve(n.Id,"Effect") is { } source)effect=_effects.GetForCanvas(source,c,EffectMode);
             }
             catch(Exception ex)when(ex is InvalidDataException or InvalidOperationException or ArgumentException)
             {if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);}
@@ -117,7 +117,7 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
                 try{DrawNode(c,entry);LastDrawnNodes++;}
                 catch(Exception ex)when(ex is InvalidOperationException or ArgumentException or InvalidDataException)
                 {
-                    _fill.Shader=null;c.RestoreToCount(nodeCount);if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);_stroke.Color=SKColors.OrangeRed;_stroke.StrokeWidth=1;c.DrawRect(b,_stroke);
+                    _fill.Shader=null;c.RestoreToCount(nodeCount);if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);_stroke.Color=SKColors.OrangeRed;_stroke.StrokeWidth=(float)(1);c.DrawRect(b,_stroke);
                 }
             }
             if(n.Get("ClipToBounds")=="True"||n.Type is "Page" or "UserControl" or "Window")c.ClipRect(b);

@@ -17,7 +17,7 @@ public static class WpfEffectMath
     /// <summary>Finite normalized Gaussian taps. WPF corrects float-rounding drift additively, not by dividing the sum.</summary>
     public static float[] GaussianKernel(int radius)
     {
-        if(radius<0||radius>DesignEffect.MaxRadius)throw new ArgumentOutOfRangeException(nameof(radius));
+        if(radius<0||radius>EffectFilterCache.MaxDeviceRadius)throw new ArgumentOutOfRangeException(nameof(radius));
         if(radius==0)return [1];
         var taps=new float[2*radius+1];var half=new float[radius+1];var sum=0d;var deviation=radius/3d;
         for(var i=0;i<=radius;i++)

@@ -93,6 +93,13 @@ try{
     await choose('Effect Kernel',1);await edit('Effect Radius','3');const s=await apply();assert.match(node(s).effect,/KernelType="Box"/);assert.match(node(s).effect,/Radius="3"/);// Sample away from the white left-middle resize handle at y=200.
     const p=await pixels();for(const y of [185,215])assert.ok(p(198,y).r<250,'Box blur halo away from selection adorners');
   });
+  await check('Box blur radius scales in the exported two-times image',async()=>{
+    const before=await snapshot(),pending=page.waitForEvent('download');await menu('File','Export PNG…');const file=await pending;
+    await file.saveAs(directory+'/box-blur-export.png');const png=PNG.sync.read(await readFile(directory+'/box-blur-export.png'));
+    assert.equal(png.width,1920);assert.equal(png.height,1120);
+    for(const y of [185,215]){const i=(y*2*png.width+198*2)*4;assert.ok(png.data[i]<250,'2x Box halo retains its design-space width');}
+    assert.equal((await snapshot()).revision,before.revision);
+  });
   await check('invalid effect draft cannot partially apply or erase valid values',async()=>{
     const before=await snapshot();await edit('Effect Radius','NaN');await click('Apply effect settings');await settle();const s=await snapshot();assert.equal(s.revision,before.revision);assert.equal(node(s).effect,node(before).effect);assert.ok(s.status.includes('finite'));await click('Reload effect settings');
   });

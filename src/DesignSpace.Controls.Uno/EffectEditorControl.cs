@@ -30,7 +30,7 @@ public sealed class EffectPreviewControl : SKCanvasElement,IDisposable
     protected override void RenderOverride(SKCanvas canvas,Size area)
     {
         canvas.Clear(new SKColor(229,233,240));
-        using var paint=new SKPaint{ImageFilter=_source is null?null:_cache.Get(_source)};
+        using var paint=new SKPaint{ImageFilter=_source is null?null:_cache.GetForCanvas(_source,canvas)};
         var saved=canvas.SaveCount;canvas.SaveLayer(paint);
         try
         {

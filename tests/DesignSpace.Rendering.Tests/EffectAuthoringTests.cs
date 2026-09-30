@@ -41,9 +41,10 @@ internal static class EffectAuthoringTests
         });
         Test("parent clip prevents filtered descendants painting outside it",()=>{var child=EffectEditing.Apply(Doc(n),[n.Id],new(){Kind=DesignEffectKind.DropShadow,Radius=0,Direction=0,ShadowDepth=60}).Root.Children[0];var host=DesignNode.Create("Canvas","Clip",0,0,100,150).Set("ClipToBounds","True") with{Children=[child]};using var r=new DesignRenderer();using var b=SKBitmap.Decode(r.ExportPng(new LayoutEngine(r).Arrange(Doc(host).Root),1));Check(b.GetPixel(130,70)==SKColors.White);});
         Test("software-reference opacity follows documented fixed-point arithmetic",()=>{Check(WpfEffectMath.ShadowAlpha(1)==253);Check(WpfEffectMath.ShadowAlpha(.5)==126);Check(WpfEffectMath.ShadowAlpha(0)==0);Reject(()=>WpfEffectMath.ShadowAlpha(double.NaN));});
-        Test("Gaussian taps are symmetric normalized and bounded",()=>{foreach(var radius in new[]{0,1,3,9,18,128}){var taps=WpfEffectMath.GaussianKernel(radius);Check(Math.Abs(taps.Sum(v=>(double)v)-1)<1e-6);Check(taps.SequenceEqual(taps.Reverse()));Check(taps.Length==2*radius+1);}Reject(()=>WpfEffectMath.GaussianKernel(129));});
+        Test("Gaussian taps are symmetric normalized and bounded",()=>{foreach(var radius in new[]{0,1,3,9,18,128}){var taps=WpfEffectMath.GaussianKernel(radius);Check(Math.Abs(taps.Sum(v=>(double)v)-1)<1e-6);Check(taps.SequenceEqual(taps.Reverse()));Check(taps.Length==2*radius+1);}Reject(()=>WpfEffectMath.GaussianKernel(EffectFilterCache.MaxDeviceRadius+1));});
         Test("native and reference filters cannot share a cache entry",()=>{using var cache=new EffectFilterCache();var raw=EffectCodec.Write(new(){Radius=3});var native=cache.Get(raw);var reference=cache.Get(raw,EffectRenderingMode.WpfSoftwareCompatible);Check(!ReferenceEquals(native,reference)&&cache.Builds==2);Check(ReferenceEquals(reference,cache.Get(raw,EffectRenderingMode.WpfSoftwareCompatible)));});
         Test("software reference truncates subpixel local blur radii",()=>{using var filter=EffectFilterCache.Create(new(){Radius=.5},EffectRenderingMode.WpfSoftwareCompatible);Check(filter is null);});
+        var scale=EffectScaleTests.Run();passed+=scale.Passed;failed+=scale.Failed;
         return(passed,failed);
     }
 }
