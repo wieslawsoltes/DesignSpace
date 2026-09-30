@@ -45,7 +45,9 @@ public static partial class TemplateLibrary
         var container=resources.Elements().FirstOrDefault(e=>e.Name.LocalName=="ResourceDictionary") ?? resources;
         var existing=container.Elements().FirstOrDefault(e=>(string?)e.Attribute(X+"Key")==key);
         if(existing is not null && existing.Name.LocalName!="ControlTemplate") throw new InvalidDataException("That resource key belongs to another resource type.");
-        if(existing is not null&&XNode.DeepEquals(existing,template))return document;
+        // Standalone editor text serializes inherited namespace declarations explicitly.
+        // Compare the same standalone representation, not attached-vs-detached attribute lists.
+        if(existing is not null&&XNode.DeepEquals(XElement.Parse(existing.ToString(SaveOptions.DisableFormatting)),template))return document;
         if(existing is null) container.Add(template); else existing.ReplaceWith(template);
         other.Insert(0,resources.ToString(SaveOptions.DisableFormatting));
         var result=document with { Root=root with { PropertyElements=other.ToImmutableArray() } }; DocumentValidator.Validate(result); return result;
