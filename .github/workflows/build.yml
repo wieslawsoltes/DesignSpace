@@ -27,6 +27,8 @@ jobs:
       - run: dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
       - name: Verify layout, shaping, images and templates
         run: dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
+      - name: Verify template triggers and preview precedence
+        run: dotnet run --project tests/DesignSpace.Template.Tests -c Release
       - name: Verify vector geometry, editing and pixel fidelity
         run: dotnet run --project tests/DesignSpace.Vector.Tests -c Release
       - name: Verify multi-document workspace
