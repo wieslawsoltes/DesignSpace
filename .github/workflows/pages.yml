@@ -60,7 +60,8 @@ jobs:
           ln -s "$PWD/artifacts/site" artifacts/serve/DesignSpace
           python3 -m http.server 4173 --directory artifacts/serve > artifacts/server.log 2>&1 &
           failed=0
-          node tests/browser/templates.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
+          # Fail fast on the new control-input gate; all established suites still run on success.
+          node tests/browser/templates.mjs http://127.0.0.1:4173/DesignSpace/
           node tests/browser/effects.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
           node tests/browser/artboard.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
           node tests/browser/animation.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1

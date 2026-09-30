@@ -19,6 +19,8 @@ namespace DesignSpace.Controls.Uno;
 public static class DesignerKeys
 {
     public static Func<VirtualKey,bool?>? StateOverride { get; set; }
+    /// <summary>Optional platform bridge after the designer successfully acquires managed focus.</summary>
+    public static Action? HostFocusOverride { get; set; }
     public static bool Down(VirtualKey key)=>StateOverride?.Invoke(key) ?? ((InputKeyboardSource.GetKeyStateForCurrentThread(key)&CoreVirtualKeyStates.Down)!=0);
     public static bool Control=>Down(VirtualKey.Control)||Down(VirtualKey.LeftWindows)||Down(VirtualKey.RightWindows);
     public static bool Shift=>Down(VirtualKey.Shift);
@@ -91,7 +93,10 @@ public sealed partial class DesignerSurface : Grid,IDisposable
     }
     private void DocumentChanged(object? sender,EventArgs e) { ResetPreviewInput(); if(_gesture.Length>0)CancelGesture();ClearSnaplines();PathDocumentChanged(); _previewRoot=null; Storyboard=null; State=null; _layout=null; Invalidate(); }
     private void SelectionChanged(object? sender,EventArgs e){if(_gesture is "move" or "resize")CancelGesture();PathSelectionChanged();Invalidate();}
-    public void FocusDesigner()=>_focus.Focus(FocusState.Programmatic);
+    public void FocusDesigner()
+    {
+        if(_focus.Focus(FocusState.Programmatic))DesignerKeys.HostFocusOverride?.Invoke();
+    }
     public void Invalidate()=>_surface.Invalidate();
     public void InvalidateLayout() { _layout=null; Invalidate(); }
     public void Fit() { if(Layout.Entries.Count==0) return; Viewport.Fit(ActualWidth,ActualHeight,Layout.Entries[0].Bounds); Invalidate(); ViewChanged?.Invoke(this,EventArgs.Empty); }
