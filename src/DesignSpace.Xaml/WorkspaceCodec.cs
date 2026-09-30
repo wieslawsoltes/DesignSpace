@@ -35,7 +35,9 @@ public static class WorkspaceCodec
                     {
                         SnapTolerance=state.TryGetProperty("snapTolerance",out _)?editor.SnapTolerance:6,
                         DefaultMargin=state.TryGetProperty("defaultMargin",out _)?editor.DefaultMargin:8,
-                        DefaultPadding=state.TryGetProperty("defaultPadding",out _)?editor.DefaultPadding:8
+                        DefaultPadding=state.TryGetProperty("defaultPadding",out _)?editor.DefaultPadding:8,
+                        RenderEffects=state.TryGetProperty("renderEffects",out _)?editor.RenderEffects:true,
+                        EffectsZoomThreshold=state.TryGetProperty("effectsZoomThreshold",out _)?editor.EffectsZoomThreshold:8
                     }};
                 i++;
             }

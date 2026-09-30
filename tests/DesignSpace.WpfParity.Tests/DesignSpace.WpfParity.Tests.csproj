@@ -7,5 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/DesignSpace.Animation/DesignSpace.Animation.csproj" />
+    <ProjectReference Include="../../src/DesignSpace.Rendering.Skia/DesignSpace.Rendering.Skia.csproj" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="3.119.2" />
   </ItemGroup>
 </Project>

@@ -39,6 +39,8 @@ The **Animation** inspector also authors all eleven built-in easing families (in
 
 **Artboard snaplines** align Canvas siblings and multi-selections by edges/centers, show default margin/padding distances, and snap resize handles without moving the fixed edge. **Guides**, **Snap**, **Grid** and **Options** expose independent controls; preferences and invalid drafts follow document tabs and workspace recovery. See [artboard authoring, APIs and verification boundaries](docs/artboard.md).
 
+**Effects** adds Gaussian/Box blur and drop shadows to objects and their subtrees. Draft-safe multi-selection authoring, scoped style/resource values, explicit None/Reset semantics, and per-document preview suppression share the native Skia renderer. PNG export retains effects even when artboard preview is suppressed. See [effect authoring, reusable APIs and native WPF comparison scope](docs/effects.md).
+
 ## Eight reusable libraries
 
 | Package | Responsibility |
@@ -67,7 +69,7 @@ session.Undo();
 string xaml = XamlCodec.Write(session.Document);
 ```
 
-Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing, Animation, Transitions, Paths, Stroke, Brush and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
+Embed the complete UI using `new WorkbenchView(yourPlatformServices)` or compose individual controls around a shared `DesignSession`. Call `EnableAdvancedTools()` to install Templates, Layout, Timing, Animation, Transitions, Paths, Stroke, Brush, Effects and the host-dependent image command; the app host supplies `IWorkbenchAssetPlatform` for image import.
 
 ## Build and run
 

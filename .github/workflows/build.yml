@@ -74,12 +74,13 @@ jobs:
           restore-keys: ${{ runner.os }}-nuget-
       - name: Build desktop application
         run: dotnet build src/DesignSpace.App -c Release -f net10.0-desktop -p:DesignSpaceTargetFrameworks=net10.0-desktop
-      - name: Compare animation timing with native WPF
+      - name: Verify animation against native WPF
         if: runner.os == 'Windows'
         run: dotnet run --project tests/DesignSpace.WpfParity.Tests -c Release
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Windows'
         with:
           name: wpf-animation-reference
-          path: artifacts/verification/wpf-*-results.json
-          if-no-files-found: warn
+          path: |
+            artifacts/verification/wpf-*-results.json
+            artifacts/verification/wpf-effects/*.png

@@ -113,6 +113,7 @@ internal static class Program
             }
             finally{reference.Remove(host);}
         });
+        var effects=EffectReferenceTests.Run();passed+=effects.Passed;failed+=effects.Failed;
         var composition=CompositionReferenceTests.Run();passed+=composition.Passed;failed+=composition.Failed;
         var easing=EasingReferenceTests.Run();passed+=easing.Passed;failed+=easing.Failed;
         Directory.CreateDirectory("artifacts/verification");

@@ -20,6 +20,7 @@ public sealed partial class WorkbenchView
     private IEnumerable<(string Name,IWorkspaceDraftEditor Editor)> DraftEditors()
     {
         yield return("Data",Data);
+        if(_effectEditor is not null)yield return("Effects",_effectEditor);
         if(_artboardSettings is not null)yield return("Artboard",_artboardSettings);
         if(_templateEditor is not null)yield return("Templates",_templateEditor);
         if(_strokeEditor is not null)yield return("Stroke",_strokeEditor);
@@ -77,7 +78,7 @@ public sealed partial class WorkbenchView
             SourceDraft=Source.IsDirty ? Source.Text : null,DraftMatchesDesign=Source.BaseRevision==Session.Revision,
             StoryboardId=Timeline.ActiveStoryboard?.Id,TimelineTime=Timeline.Time,Mode=_mode,SplitOrientation=_splitOrientation,SplitRatio=_splitRatio,Zoom=view.Zoom,PanX=view.PanX,PanY=view.PanY,
             HasViewport=true,ShowGrid=view.ShowGrid,ShowRulers=view.ShowRulers,SnapToGrid=view.SnapToGrid,GridSize=view.GridSize,
-            SnapToSnaplines=view.SnapToSnaplines,SnapTolerance=view.SnapTolerance,DefaultMargin=view.DefaultMargin,DefaultPadding=view.DefaultPadding,
+            SnapToSnaplines=view.SnapToSnaplines,SnapTolerance=view.SnapTolerance,DefaultMargin=view.DefaultMargin,DefaultPadding=view.DefaultPadding,RenderEffects=view.RenderEffects,EffectsZoomThreshold=view.EffectsZoomThreshold,
             Panels=DraftEditors().ToImmutableDictionary(p=>p.Name,p=>p.Editor.CaptureWorkspaceDraft())
         });
     }
@@ -103,7 +104,7 @@ public sealed partial class WorkbenchView
             _splitRatio=state.SplitRatio;SetSplitOrientation(state.SplitOrientation);SetMode(state.Mode);
             var viewport=Designer.Viewport;viewport.Zoom=state.Zoom;viewport.PanX=state.PanX;viewport.PanY=state.PanY;
             viewport.ShowGrid=state.ShowGrid;viewport.ShowRulers=state.ShowRulers;viewport.SnapToGrid=state.SnapToGrid;viewport.GridSize=state.GridSize;
-            viewport.SnapToSnaplines=state.SnapToSnaplines;viewport.SnapTolerance=state.SnapTolerance;viewport.DefaultMargin=state.DefaultMargin;viewport.DefaultPadding=state.DefaultPadding;
+            viewport.SnapToSnaplines=state.SnapToSnaplines;viewport.SnapTolerance=state.SnapTolerance;viewport.DefaultMargin=state.DefaultMargin;viewport.DefaultPadding=state.DefaultPadding;viewport.RenderEffects=state.RenderEffects;viewport.EffectsZoomThreshold=state.EffectsZoomThreshold;
             RefreshArtboardSettings();
             Designer.InvalidateLayout();UpdateZoom();
             if(!state.HasViewport)DispatcherQueue.TryEnqueue(()=>{if(Workspace.ActiveDocumentId==tab.Id)Designer.Fit();});

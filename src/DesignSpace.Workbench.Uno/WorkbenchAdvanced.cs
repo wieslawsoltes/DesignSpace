@@ -17,6 +17,7 @@ public sealed partial class WorkbenchView
     private TemplateEditorControl? _templateEditor;
     private StrokeEditorControl? _strokeEditor;
     private BrushEditorControl? _brushEditor;
+    private EffectEditorControl? _effectEditor;
     private AnimationTrackInspectorControl? _animationTrackEditor;
     private StateTransitionEditorControl? _stateTransitions;
     private StoryboardInspectorControl? _storyboardInspector;
@@ -38,10 +39,13 @@ public sealed partial class WorkbenchView
         _rightTabs.Add("Stroke",_strokeEditor);
         _brushEditor=new(Session){CanEditBase=()=>!States.IsRecording&&!Timeline.IsRecording};
         _brushEditor.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Brush",_brushEditor);
+        _effectEditor=new(Session){CanEditBase=()=>!States.IsRecording&&!Timeline.IsRecording};
+        _effectEditor.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Effects",_effectEditor);
         _layoutAuthoring=new(Session);_layoutAuthoring.Error+=(_,error)=>SetStatus(error,true);_leftTabs.Add("Layout",_layoutAuthoring);
         var toolbar=_mainToolbar;
         if(toolbar is not null)
         {
+            toolbar.Children.Add(new StudioButton("Effects",()=>_rightTabs.Select("Effects"),"Open Effects panel"));
             toolbar.Children.Add(new StudioButton("Animation",()=>_rightTabs.Select("Animation"),"Open Animation panel"));
             toolbar.Children.Add(new StudioButton("Brush",()=>_rightTabs.Select("Brush"),"Open Brush panel"));
             toolbar.Children.Add(new StudioButton("Stroke",()=>_rightTabs.Select("Stroke"),"Open Stroke panel"));
@@ -59,7 +63,7 @@ public sealed partial class WorkbenchView
     private void StopAnimationForEditing(object? sender,EventArgs args){States.StopTransitions(false);Timeline.Stop();}
     public void DisposeAdvancedTools()
     {
-        Timeline.TrackSettingsRequested-=OpenAnimationTrack;_animationTrackEditor?.Dispose();_brushEditor?.Dispose();_strokeEditor?.Dispose();States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
+        Timeline.TrackSettingsRequested-=OpenAnimationTrack;_effectEditor?.Dispose();_animationTrackEditor?.Dispose();_brushEditor?.Dispose();_strokeEditor?.Dispose();States.TransitionEditorRequested-=OpenTransitions;_stateTransitions?.Dispose();Timeline.SettingsRequested-=OpenTiming;_storyboardInspector?.Dispose();Designer.EditingStarted-=StopAnimationForEditing;_templateEditor?.Dispose();_layoutAuthoring?.Dispose();
     }
     public async Task ImportImageAsync()
     {

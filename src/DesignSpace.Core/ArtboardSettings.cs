@@ -11,8 +11,11 @@ public sealed record ArtboardSettings
     public double SnapTolerance { get; init; }=6;
     public double DefaultMargin { get; init; }=8;
     public double DefaultPadding { get; init; }=8;
+    public bool RenderEffects { get; init; }=true;
+    public double EffectsZoomThreshold { get; init; }=8;
     public void Validate()
     {
+        if(!double.IsFinite(EffectsZoomThreshold)||EffectsZoomThreshold<.1||EffectsZoomThreshold>8)throw new InvalidDataException("Effects zoom limit must be between 10% and 800%.");
         if(!double.IsFinite(GridSize)||GridSize<1||GridSize>10000||
            !double.IsFinite(SnapTolerance)||SnapTolerance<1||SnapTolerance>32||
            !double.IsFinite(DefaultMargin)||DefaultMargin<0||DefaultMargin>10000||
