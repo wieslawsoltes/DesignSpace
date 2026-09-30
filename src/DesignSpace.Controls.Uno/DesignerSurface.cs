@@ -55,10 +55,15 @@ public sealed partial class DesignerSurface : Grid,IDisposable
     public DesignViewport Viewport { get; }=new();
     public LayoutSnapshot Layout=>_layout ??= _layoutEngine.Arrange(PreviewResolver?.Invoke(_previewRoot ?? Session.Document.Root) ?? _previewRoot ?? Session.Document.Root);
     public long MeasureCacheHits=>_layoutEngine.MeasureCacheHits;
-    public Func<DesignNode,DesignNode>? PreviewResolver { get; set; }=DesignPreview.Resolve;
+    public Func<DesignNode,DesignNode>? PreviewResolver { get; set; }
     private string _tool="Selection";
     public string Tool { get=>_tool;set{if(_tool==value)return;CancelGesture();_tool=value;NotifyPaths();} }
-    public bool IsPreview { get; set; }
+    private bool _isPreview;
+    public bool IsPreview
+    {
+        get=>_isPreview;
+        set{if(value==_isPreview)return;CancelGesture();_isPreview=value;ResetPreviewInput();InvalidateLayout();}
+    }
     public double Playhead { get; private set; }
     public DesignStoryboard? Storyboard { get; private set; }
     public DesignState? State { get; private set; }
@@ -69,7 +74,7 @@ public sealed partial class DesignerSurface : Grid,IDisposable
     public event EventHandler<string>? Error;
     public DesignerSurface(DesignSession session)
     {
-        Session=session; _layoutEngine=new(Renderer); Background=StudioTheme.Brush("#2D2D30"); _surface=new(this); Children.Add(_surface); Children.Add(_focus);
+        Session=session; PreviewResolver=PreviewContext.Resolve; _layoutEngine=new(Renderer); Background=StudioTheme.Brush("#2D2D30"); _surface=new(this); Children.Add(_surface); Children.Add(_focus);
         AutomationProperties.SetName(_surface,"Design artboard"); AutomationProperties.SetName(_focus,"Designer keyboard focus");
         _surface.PointerPressed+=Pressed; _surface.PointerMoved+=Moved; _surface.PointerReleased+=Released;
         _surface.PointerCaptureLost+=(_,_)=> { if(_gesture.Length>0) CancelGesture(); };
@@ -80,10 +85,11 @@ public sealed partial class DesignerSurface : Grid,IDisposable
             else if(DesignerKeys.Shift) Viewport.PanX+=p.Properties.MouseWheelDelta*.35; else Viewport.PanY+=p.Properties.MouseWheelDelta*.35;
             Invalidate(); ViewChanged?.Invoke(this,EventArgs.Empty); e.Handled=true;
         };
+        InitializePreviewInput();
         Session.DocumentChanged+=DocumentChanged; Session.SelectionChanged+=SelectionChanged;
         SizeChanged+=(_,_)=> { if(_fitPending && ActualWidth>100 && ActualHeight>100) { Fit(); _fitPending=false; } else Invalidate(); };
     }
-    private void DocumentChanged(object? sender,EventArgs e) { if(_gesture.Length>0)CancelGesture();ClearSnaplines();PathDocumentChanged(); _previewRoot=null; Storyboard=null; State=null; _layout=null; Invalidate(); }
+    private void DocumentChanged(object? sender,EventArgs e) { ResetPreviewInput(); if(_gesture.Length>0)CancelGesture();ClearSnaplines();PathDocumentChanged(); _previewRoot=null; Storyboard=null; State=null; _layout=null; Invalidate(); }
     private void SelectionChanged(object? sender,EventArgs e){if(_gesture is "move" or "resize")CancelGesture();PathSelectionChanged();Invalidate();}
     public void FocusDesigner()=>_focus.Focus(FocusState.Programmatic);
     public void Invalidate()=>_surface.Invalidate();
@@ -103,7 +109,7 @@ public sealed partial class DesignerSurface : Grid,IDisposable
         var point=e.GetCurrentPoint(_surface); var p=new DPoint(point.Position.X,point.Position.Y); _start=Viewport.ScreenToWorld(p); _screenStart=p; _panStart=new(Viewport.PanX,Viewport.PanY); FocusDesigner();
         if(point.Properties.IsMiddleButtonPressed || Tool=="Hand" || DesignerKeys.Down(VirtualKey.Space)) _gesture="pan";
         else if(!point.Properties.IsLeftButtonPressed) return;
-        else if(IsPreview) { var hit=Layout.HitTest(_start); if(hit is not null) PreviewClicked?.Invoke(this,hit.Node.Id); return; }
+        else if(IsPreview) { PreviewPressed(e,_start); return; }
         else if(Tool=="Zoom") { Viewport.ZoomAt(p,Viewport.Zoom*(DesignerKeys.Alt ? .8 : 1.25)); Invalidate(); ViewChanged?.Invoke(this,EventArgs.Empty); return; }
         else
         {
@@ -155,6 +161,7 @@ public sealed partial class DesignerSurface : Grid,IDisposable
     private void Moved(object sender,PointerRoutedEventArgs e)
     {
         var position=e.GetCurrentPoint(_surface).Position; var screen=new DPoint(position.X,position.Y); var world=Viewport.ScreenToWorld(screen);
+        if(IsPreview&&_gesture!="pan"){PreviewMoved(world);e.Handled=true;return;}
         if(_gesture!="pan"&&PathMoved(world)){e.Handled=true;return;}
         if(_gesture.Length==0)return;
         if(_gesture=="pan") { Viewport.PanX=_panStart.X+screen.X-_screenStart.X; Viewport.PanY=_panStart.Y+screen.Y-_screenStart.Y; Invalidate(); return; }
@@ -209,6 +216,7 @@ public sealed partial class DesignerSurface : Grid,IDisposable
     }
     private void Released(object sender,PointerRoutedEventArgs e)
     {
+        if(IsPreview&&_gesture!="pan"){PreviewReleased(e);return;}
         var gesture=_gesture; _gesture="";
         try
         {
@@ -232,5 +240,5 @@ public sealed partial class DesignerSurface : Grid,IDisposable
         finally { ClearSnaplines();_marquee=null; _previewRoot=null; _layout=null; _changes=null; _original.Clear(); _surface.ReleasePointerCapture(e.Pointer); Invalidate(); ViewChanged?.Invoke(this,EventArgs.Empty); }
         e.Handled=true;
     }
-    public void Dispose() { Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged; _snapRenderer.Dispose();_adorners.Dispose();Renderer.Dispose(); }
+    public void Dispose() { ResetPreviewInput(); Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged; _snapRenderer.Dispose();_adorners.Dispose();Renderer.Dispose(); }
 }

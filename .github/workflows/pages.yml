@@ -38,6 +38,7 @@ jobs:
           dotnet run --project tests/DesignSpace.Tests -c Release
           dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
           dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
+          dotnet run --project tests/DesignSpace.Template.Tests -c Release
           dotnet run --project tests/DesignSpace.Vector.Tests -c Release
           dotnet run --project tests/DesignSpace.Workspace.Tests -c Release
       - name: Publish real Uno WebAssembly application
@@ -59,6 +60,7 @@ jobs:
           ln -s "$PWD/artifacts/site" artifacts/serve/DesignSpace
           python3 -m http.server 4173 --directory artifacts/serve > artifacts/server.log 2>&1 &
           failed=0
+          node tests/browser/templates.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
           node tests/browser/effects.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
           node tests/browser/artboard.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1
           node tests/browser/animation.mjs http://127.0.0.1:4173/DesignSpace/ || failed=1

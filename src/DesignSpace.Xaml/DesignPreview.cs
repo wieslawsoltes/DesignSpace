@@ -60,9 +60,9 @@ public static class DesignPreview
         if(!setter.IsObject)return setter;
         var value=new XElement(Read(setter.Value));value.Attribute(X+"Key")?.Remove();
         foreach(var element in value.DescendantsAndSelf())foreach(var attribute in element.Attributes().Where(a=>!a.IsNamespaceDeclaration).ToArray())
-            if(ResourceKey(attribute.Value) is { } key)
+            if(ResourceKey(attribute.Value) is { } nestedKey)
             {
-                var entry=scope.FindEntry(key)??throw new InvalidDataException("Trigger value resource not found: "+key);
+                var entry=scope.FindEntry(nestedKey)??throw new InvalidDataException("Trigger value resource not found: "+nestedKey);
                 if(entry.Value.HasElements||entry.Value.Name.LocalName is not ("Color" or "Double" or "Point" or "String" or "Boolean"))throw new InvalidDataException("Only literal value resources are supported inside trigger value objects.");
                 attribute.Value=entry.Value.Value;
             }

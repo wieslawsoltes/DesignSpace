@@ -12,12 +12,12 @@ void Check(bool value,string message="Assertion failed"){if(!value)throw new Exc
 void Reject(Action run){try{run();}catch(InvalidDataException){return;}throw new Exception("Expected InvalidDataException");}
 const string ns=DesignNode.PresentationNamespace,x=DesignNode.XamlNamespace;
 const string hover="<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Chrome' Property='Background' Value='Red'/></Trigger>";
-DesignDocument Fixture(string triggers=hover,string style="",string local="",string visual="",string resources="")=>XamlCodec.Parse($"""
-<Canvas xmlns="{ns}" xmlns:x="{x}" Width="400" Height="300" Background="White">
- <Canvas.Resources>{resources}<ControlTemplate x:Key="Template" TargetType="Button">
- {(visual.Length==0?"<Border x:Name='Chrome' Background='{TemplateBinding Background}'><ContentPresenter x:Name='Label'/></Border>":visual)}
- <ControlTemplate.Triggers>{triggers}</ControlTemplate.Triggers></ControlTemplate>{style}</Canvas.Resources>
- <Button x:Name="Target" Canvas.Left="40" Canvas.Top="60" Width="120" Height="60" Template="{{StaticResource Template}}" Content="Test" {local}/>
+DesignDocument Fixture(string triggers=hover,string style="",string local="",string visual="",string resources="")=>XamlCodec.Parse($$"""
+<Canvas xmlns="{{ns}}" xmlns:x="{{x}}" Width="400" Height="300" Background="White">
+ <Canvas.Resources>{{resources}}<ControlTemplate x:Key="Template" TargetType="Button">
+ {{(visual.Length==0?"<Border x:Name='Chrome' Background='{TemplateBinding Background}'><ContentPresenter x:Name='Label'/></Border>":visual)}}
+ <ControlTemplate.Triggers>{{triggers}}</ControlTemplate.Triggers></ControlTemplate>{{style}}</Canvas.Resources>
+ <Button x:Name="Target" Canvas.Left="40" Canvas.Top="60" Width="120" Height="60" Template="{StaticResource Template}" Content="Test" {{local}}/>
 </Canvas>
 """).Document;
 DesignNode Target(DesignNode root)=>root.Children[0];

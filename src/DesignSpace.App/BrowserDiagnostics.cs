@@ -52,6 +52,8 @@ internal sealed class BrowserDiagnostics : IDisposable
                 surface=new{x=position.X,y=position.Y,width=designer.ActualWidth,height=designer.ActualHeight,zoom=designer.Viewport.Zoom,panX=designer.Viewport.PanX,panY=designer.Viewport.PanY},
                 nodes=_view.Session.Document.Root.DescendantsAndSelf().Select(n=>new{id=n.Id,name=n.Name,type=n.Type,properties=n.Properties.ToDictionary(p=>p.Key,p=>p.Value),effect=BrushResolver.LocalSource(n,"Effect"),rotation=n.Rotation,locked=n.IsLocked}).ToArray(),
                 selection=_view.Session.Selection.Select(id=>_view.Session.Index.Find(id)?.Name).ToArray(),canUndo=_view.Session.CanUndo,canRedo=_view.Session.CanRedo,
+                interaction=new{enabled=designer.IsPreview,state=designer.PreviewContext.State,builds=designer.PreviewContext.Builds,warnings=designer.PreviewContext.Diagnostics,
+                    parts=designer.Layout.Entries.Where(e=>e.Node.Get(DesignPreview.OwnerKey).Length>0).Select(e=>new{id=e.Node.Id,name=e.Node.Name,owner=e.Node.Get(DesignPreview.OwnerKey),type=e.Node.Type,background=BrushResolver.LocalSource(e.Node,"Background"),opacity=e.Node.Get("Opacity","1"),text=e.Node.Get("Text")}).ToArray()},
                 snapping=new{settings=designer.Viewport.CaptureArtboardSettings(),guides=designer.SnapGuides,transform=designer.SnapGuideTransform,targets=designer.SnapTargetCount,indexBuilds=designer.SnapIndexBuildCount},
                 paths=designer.PathDiagnostics,pathBuilds=designer.Renderer.PathBuildCount,pathCacheHits=designer.Renderer.PathCacheHits,
                 drawCount=designer.Renderer.DrawCount,drawMilliseconds=designer.Renderer.LastDrawMilliseconds,
