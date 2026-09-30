@@ -28,7 +28,7 @@ public static partial class TemplateLibrary
     public static DesignDocument Save(DesignDocument document,string source)
     {
         if(document.Root.IsLocked)throw new InvalidOperationException("Unlock the root before changing template resources.");
-        using var reader=XmlReader.Create(new StringReader(source),new XmlReaderSettings { DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,MaxCharactersInDocument=1024*1024 });
+        using var reader=XmlReader.Create(new StringReader(source),new XmlReaderSettings { DtdProcessing=DtdProcessing.Prohibit,XmlResolver=null,IgnoreWhitespace=true,MaxCharactersInDocument=1024*1024 });
         var template=XElement.Load(reader); var key=(string?)template.Attribute(X+"Key");
         if(template.Name!=Ns+"ControlTemplate" || string.IsNullOrWhiteSpace(key)) throw new InvalidDataException("Provide a ControlTemplate with x:Key.");
         if(key.Length>128)throw new InvalidDataException("Template keys are limited to 128 characters.");
@@ -45,7 +45,8 @@ public static partial class TemplateLibrary
         var container=resources.Elements().FirstOrDefault(e=>e.Name.LocalName=="ResourceDictionary") ?? resources;
         var existing=container.Elements().FirstOrDefault(e=>(string?)e.Attribute(X+"Key")==key);
         if(existing is not null && existing.Name.LocalName!="ControlTemplate") throw new InvalidDataException("That resource key belongs to another resource type.");
-        // Standalone editor text serializes inherited namespace declarations explicitly.
+        // IgnoreWhitespace on the secure reader matches the resource parser while retaining
+        // xml:space-preserved text. Standalone editor text also makes inherited xmlns explicit.
         // Compare the same standalone representation, not attached-vs-detached attribute lists.
         if(existing is not null&&XNode.DeepEquals(XElement.Parse(existing.ToString(SaveOptions.DisableFormatting)),template))return document;
         if(existing is null) container.Add(template); else existing.ReplaceWith(template);

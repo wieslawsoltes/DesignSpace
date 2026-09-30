@@ -34,6 +34,17 @@ internal static class TemplateAuthoringTests
             var d=XamlCodec.Parse($"<Canvas xmlns='{ns}' xmlns:x='{x}' Width='400' Height='300' IsEnabled='False'><Canvas.Resources><Style TargetType='Button'><Setter Property='IsEnabled' Value='True'/><Style.Triggers><Trigger Property='IsEnabled' Value='False'><Setter Property='Opacity' Value='0.4'/></Trigger></Style.Triggers></Style></Canvas.Resources><Button x:Name='Target' Width='120' Height='60'/></Canvas>").Document;
             var preview=DesignPreview.Get(d.Root);Check(preview.Diagnostics.Count==0&&preview.Root.Children[0].Get("IsEnabled")=="False"&&preview.Root.Children[0].Get("Opacity")=="0.4");
         });
+        Test("formatted template saves converge without stripping significant content",()=>
+        {
+            var xml=XElement.Parse(TemplateLibrary.CreateDefault("TextTemplate"));
+            xml.Elements().Single().ReplaceWith(new XElement(XName.Get("TextBlock",ns),new XAttribute(XNamespace.Xml+"space","preserve"),"  content  "));
+            var d=TemplateLibrary.Save(blank,xml.ToString());var text=TemplateLibrary.Read(d)["TextTemplate"];
+            Check(XElement.Parse(text).Elements().Single().Value=="  content  ");
+            Check(ReferenceEquals(d,TemplateLibrary.Save(d,text)));
+            var edited=text.Replace("  content  ","  edited  ",StringComparison.Ordinal);
+            var next=TemplateLibrary.Save(d,edited);Check(!ReferenceEquals(d,next));
+            Check(XElement.Parse(TemplateLibrary.Read(next)["TextTemplate"]).Elements().Single().Value=="  edited  ");
+        });
         return(passed,failed);
     }
 }
