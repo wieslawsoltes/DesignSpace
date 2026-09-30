@@ -26,7 +26,7 @@ public sealed partial class WorkbenchView
     public void EnableAdvancedTools()
     {
         if(_templateEditor is not null)return;
-        Designer.PreviewResolver=DesignPreview.Resolve;Designer.EditingStarted+=StopAnimationForEditing;
+        Designer.EditingStarted+=StopAnimationForEditing;
         _templateEditor=new(Session);_templateEditor.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Templates",_templateEditor);
         _storyboardInspector=new(Session,Timeline);_storyboardInspector.Error+=(_,error)=>SetStatus(error,true);_rightTabs.Add("Timing",_storyboardInspector);
         Timeline.SettingsRequested+=OpenTiming;

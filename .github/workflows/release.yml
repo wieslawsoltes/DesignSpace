@@ -40,6 +40,7 @@ jobs:
           dotnet run --project tests/DesignSpace.Tests -c Release
           dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
           dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
+          dotnet run --project tests/DesignSpace.Template.Tests -c Release
           dotnet run --project tests/DesignSpace.Vector.Tests -c Release
           dotnet run --project tests/DesignSpace.Workspace.Tests -c Release
       - name: Pack eight independently reusable libraries

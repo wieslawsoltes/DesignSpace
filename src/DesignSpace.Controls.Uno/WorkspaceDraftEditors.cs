@@ -15,14 +15,14 @@ public sealed partial class TemplateEditorControl : IWorkspaceDraftEditor
     {
         Values=ImmutableDictionary<string,string>.Empty.Add("Source",_source.Text).Add("Key",_key??""),
         Originals=ImmutableDictionary<string,string>.Empty.Add("Canonical",_canonical).Add("Initial",_initialDraft),
-        HasChanges=Dirty && Normalize(_source.Text)!=_initialDraft
+        HasChanges=Dirty && Normalize(_source.Text)!=_initialDraft,MatchesDesign=_revision==_session.Revision
     };
     public void RestoreWorkspaceDraft(DesignerPanelDraft? state)
     {
         _syncing=true;_source.Text="";_canonical="";_initialDraft="";_key=null;_syncing=false;Refresh();
         if(state is null){if(_key is null)New();return;}
         _syncing=true;
-        try{_key=state.Values.GetValueOrDefault("Key");_source.Text=state.Values.GetValueOrDefault("Source","");_canonical=state.Originals.GetValueOrDefault("Canonical","");_initialDraft=state.Originals.GetValueOrDefault("Initial","");_templates.SelectedItem=_key;}
+        try{_key=state.Values.GetValueOrDefault("Key");_source.Text=state.Values.GetValueOrDefault("Source","");_canonical=state.Originals.GetValueOrDefault("Canonical","");_initialDraft=state.Originals.GetValueOrDefault("Initial","");_revision=!state.HasChanges||state.MatchesDesign?_session.Revision:-1;_templates.SelectedItem=_key;}
         finally{_syncing=false;}
         _status.Text=Dirty ? "Retained template draft for this document" : "Template synchronized";
     }

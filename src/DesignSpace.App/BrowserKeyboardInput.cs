@@ -26,6 +26,21 @@ internal static class BrowserKeyboardInput
               return 'ready';
             })()
             """);
+        // With accessibility opt-in still visible, Uno intentionally lets the first
+        // browser Tab from <body> reach that entry point. A managed canvas-focus
+        // proxy alone does not change DOM focus. Explicit artboard interaction must
+        // focus the real host as well; do not remove/disable the accessibility entry
+        // point, or steal focus from semantic elements when accessibility is enabled.
+        DesignerKeys.HostFocusOverride=()=>Uno.Foundation.WebAssemblyRuntime.InvokeJS("""
+            (() => {
+              if (!document.getElementById('uno-enable-accessibility')) return 'semantic-focus';
+              const host = document.getElementById('uno-body');
+              if (!host) return 'no-host';
+              if (!host.hasAttribute('tabindex')) host.setAttribute('tabindex', '-1');
+              host.focus({preventScroll:true});
+              return 'host-focus';
+            })()
+            """);
         DesignerKeys.StateOverride=key=>
         {
             var name=key switch { VirtualKey.Control=>"control",VirtualKey.Shift=>"shift",VirtualKey.Menu=>"alt",VirtualKey.LeftWindows or VirtualKey.RightWindows=>"meta",VirtualKey.Space=>"space",_=>null };

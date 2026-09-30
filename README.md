@@ -41,6 +41,8 @@ The **Animation** inspector also authors all eleven built-in easing families (in
 
 **Effects** adds Gaussian/Box blur and drop shadows to objects and their subtrees. Draft-safe multi-selection authoring, scoped style/resource values, explicit None/Reset semantics, and per-document preview suppression share the native Skia renderer. PNG export retains effects even when artboard preview is suppressed. See [effect authoring, reusable APIs and native WPF comparison scope](docs/effects.md).
 
+**Interactive templates** add inert Trigger/MultiTrigger preview, namescoped part setters, hover/press/focus input and transient checkbox/radio state. The Templates source editor now protects stale drafts and validates template application atomically. Use **Sample** to create an editable interaction example, then **Test controls** to try it without changing the saved design. See [template authoring, precedence and verification boundaries](docs/template-triggers.md).
+
 ## Eight reusable libraries
 
 | Package | Responsibility |

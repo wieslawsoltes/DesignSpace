@@ -27,6 +27,8 @@ jobs:
       - run: dotnet run --project tests/DesignSpace.Compatibility.Tests -c Release
       - name: Verify layout, shaping, images and templates
         run: dotnet run --project tests/DesignSpace.Rendering.Tests -c Release
+      - name: Verify template triggers and preview precedence
+        run: dotnet run --project tests/DesignSpace.Template.Tests -c Release
       - name: Verify vector geometry, editing and pixel fidelity
         run: dotnet run --project tests/DesignSpace.Vector.Tests -c Release
       - name: Verify multi-document workspace
@@ -77,6 +79,9 @@ jobs:
       - name: Verify animation against native WPF
         if: runner.os == 'Windows'
         run: dotnet run --project tests/DesignSpace.WpfParity.Tests -c Release
+      - name: Verify property triggers against native WPF
+        if: runner.os == 'Windows'
+        run: dotnet run --project tests/DesignSpace.WpfTemplate.Tests -c Release
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Windows'
         with:

@@ -42,7 +42,7 @@ public sealed partial class WorkbenchView
         bar.Children.Add(new StudioButton("Save all",()=>_=GuardAsync(SaveAllAsync),"Save all documents"));
         bar.Children.Add(new StudioButton("Workspace",()=>_=GuardAsync(SaveWorkspaceAsync),"Save workspace"));
         bar.Children.Add(Separator()); bar.Children.Add(new StudioButton("↶",()=>Guard(Session.Undo),"Undo")); bar.Children.Add(new StudioButton("↷",()=>Guard(Session.Redo),"Redo")); bar.Children.Add(Separator());
-        bar.Children.Add(new StudioButton("▶  Preview",TogglePreview,"Preview design")); bar.Children.Add(new StudioButton("■",()=> { Timeline.Stop(); Designer.IsPreview=false; Designer.ClearPreview(); },"Stop preview")); bar.Children.Add(Separator());
+        bar.Children.Add(new StudioButton("Test controls",()=>{Timeline.Stop();States.StopTransitions(false);Designer.ClearPreview();Designer.IsPreview=!Designer.IsPreview;Designer.FocusDesigner();SetStatus(Designer.IsPreview?"Control preview · hover, press, Tab and Space · Escape returns to design":"Design mode");},"Test control interactions")); bar.Children.Add(new StudioButton("▶  Preview",TogglePreview,"Preview design")); bar.Children.Add(new StudioButton("■",()=> { Timeline.Stop(); Designer.IsPreview=false; Designer.ClearPreview(); },"Stop preview")); bar.Children.Add(Separator());
         bar.Children.Add(StudioTheme.Text("Artboard",11,"#AEAEB5"));
         var devices=new ComboBox { ItemsSource=new[]{"960 × 560","1280 × 720","1920 × 1080","390 × 844","768 × 1024"},SelectedIndex=0,MinWidth=119,MinHeight=24,FontSize=11,Padding=new Thickness(5,1,5,1),Background=StudioTheme.Field };
         devices.SelectionChanged+=(_,_)=>
@@ -87,6 +87,7 @@ public sealed partial class WorkbenchView
         if(control && e.Key==VirtualKey.Enter && _mode!="Design") { Source.Apply(); e.Handled=true; return; }
         var focused=XamlRoot is null ? null : FocusManager.GetFocusedElement(XamlRoot);
         if(focused is TextBox or PasswordBox || e.OriginalSource is TextBox) return;
+        if(Designer.HandlePreviewKey(e.Key,control,shift)){e.Handled=true;return;}
         try{if(Designer.HandlePathKey(e.Key,control,shift)){e.Handled=true;return;}}catch(Exception ex){SetStatus(ex.Message,true);e.Handled=true;return;}
         if(control)
         {
