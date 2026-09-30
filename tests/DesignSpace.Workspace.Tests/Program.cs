@@ -1,7 +1,8 @@
 var workspace=WorkspaceTests.Run();
+var effects=EffectWorkspaceTests.Run();
 var artboard=ArtboardWorkspaceTests.Run();
 var operations=DocumentOperationTests.Run();
-var passed=workspace.Passed+operations.Passed+artboard.Passed;var failed=workspace.Failed+operations.Failed+artboard.Failed;
+var passed=workspace.Passed+operations.Passed+artboard.Passed+effects.Passed;var failed=workspace.Failed+operations.Failed+artboard.Failed+effects.Failed;
 Directory.CreateDirectory("artifacts/verification");
 File.WriteAllText("artifacts/verification/workspace-results.json","{\"passed\":"+passed+",\"failed\":"+failed+"}");
 Console.WriteLine($"{passed} workspace tests passed; {failed} failed.");

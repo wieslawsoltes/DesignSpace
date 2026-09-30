@@ -39,6 +39,7 @@ public sealed class ArtboardSettingsControl : Grid,IWorkspaceDraftEditor
         body.Children.Add(StudioTheme.Text("Artboard · snapping",13,"#FFFFFF"));
         Check("Show grid","Show snap grid");Check("Show rulers","Show rulers");Check("Snap grid","Snap to gridlines");Number("Grid spacing","Gridline spacing (design units)");
         Check("Snap lines","Snap to snaplines");Number("Tolerance","Snap tolerance (screen pixels)");Number("Margin","Default margin (design units)");Number("Padding","Default padding (design units)");
+        Check("Render effects","Render effects on the artboard");Number("Effects zoom limit","Disable effects above this zoom (percent)");
         var note=StudioTheme.Text("Align Canvas siblings by their edges or centers. Margin guides appear between overlapping rows/columns; padding guides sit inside the parent content area. Hold Alt to bypass snapping. Snaplines take priority over grid snapping on the matching axis.",11,"#AAAAB3");note.TextWrapping=TextWrapping.Wrap;body.Children.Add(note);
         _status.TextWrapping=TextWrapping.Wrap;body.Children.Add(_status);Reload();
     }
@@ -47,13 +48,13 @@ public sealed class ArtboardSettingsControl : Grid,IWorkspaceDraftEditor
     {
         ["Show grid"]=s.ShowGrid.ToString(),["Show rulers"]=s.ShowRulers.ToString(),["Snap grid"]=s.SnapToGrid.ToString(),["Snap lines"]=s.SnapToSnaplines.ToString(),
         ["Grid spacing"]=s.GridSize.ToString("R",CultureInfo.InvariantCulture),["Tolerance"]=s.SnapTolerance.ToString("R",CultureInfo.InvariantCulture),
-        ["Margin"]=s.DefaultMargin.ToString("R",CultureInfo.InvariantCulture),["Padding"]=s.DefaultPadding.ToString("R",CultureInfo.InvariantCulture)
+        ["Margin"]=s.DefaultMargin.ToString("R",CultureInfo.InvariantCulture),["Padding"]=s.DefaultPadding.ToString("R",CultureInfo.InvariantCulture),["Render effects"]=s.RenderEffects.ToString(),["Effects zoom limit"]=(s.EffectsZoomThreshold*100).ToString("R",CultureInfo.InvariantCulture)
     }.ToImmutableDictionary();
     private static ArtboardSettings Parse(IReadOnlyDictionary<string,string> values)
     {
         double N(string key)=>double.TryParse(values.GetValueOrDefault(key),NumberStyles.Float,CultureInfo.InvariantCulture,out var n)&&double.IsFinite(n)?n:throw new InvalidDataException("Enter a finite "+key.ToLowerInvariant()+" value.");
         bool B(string key)=>bool.TryParse(values.GetValueOrDefault(key),out var b)?b:throw new InvalidDataException("Invalid artboard option: "+key);
-        var settings=new ArtboardSettings{ShowGrid=B("Show grid"),ShowRulers=B("Show rulers"),SnapToGrid=B("Snap grid"),SnapToSnaplines=B("Snap lines"),GridSize=N("Grid spacing"),SnapTolerance=N("Tolerance"),DefaultMargin=N("Margin"),DefaultPadding=N("Padding")};
+        var settings=new ArtboardSettings{ShowGrid=B("Show grid"),ShowRulers=B("Show rulers"),SnapToGrid=B("Snap grid"),SnapToSnaplines=B("Snap lines"),GridSize=N("Grid spacing"),SnapTolerance=N("Tolerance"),DefaultMargin=N("Margin"),DefaultPadding=N("Padding"),RenderEffects=values.ContainsKey("Render effects")?B("Render effects"):true,EffectsZoomThreshold=values.ContainsKey("Effects zoom limit")?N("Effects zoom limit")/100:8};
         settings.Validate();return settings;
     }
     private void SetFields(IReadOnlyDictionary<string,string> values)
@@ -78,6 +79,6 @@ public sealed class ArtboardSettingsControl : Grid,IWorkspaceDraftEditor
     public DesignerPanelDraft CaptureWorkspaceDraft()=>new(){Values=Fields(),Originals=_original,HasChanges=Dirty};
     public void RestoreWorkspaceDraft(DesignerPanelDraft? state)
     {
-        Reload();if(state?.HasChanges!=true)return;SetFields(state.Values);_original=state.Originals;_status.Text="Retained artboard settings draft for this document";
+        Reload();if(state?.HasChanges!=true)return;SetFields(Values(_read()).SetItems(state.Values));_original=Values(_read()).SetItems(state.Originals);_status.Text="Retained artboard settings draft for this document";
     }
 }
