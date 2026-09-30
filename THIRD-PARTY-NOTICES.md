@@ -50,3 +50,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## WPF software effect numerical conventions
+
+`DesignSpace.Rendering.Skia/WpfEffectMath.cs` adapts the finite Gaussian weight
+calculation and fully covered shadow-opacity arithmetic from the MIT-licensed
+.NET WPF sources, copyright .NET Foundation and Contributors. The existing WPF
+MIT license reproduced above applies to these adaptations as well.
+
+Sources at commit `a4f9f07f71c0a612295d4af1c75db48d954b30c9`:
+- `src/Microsoft.DotNet.Wpf/src/WpfGfx/core/resources/BlurEffect.cpp`
+- `src/Microsoft.DotNet.Wpf/src/WpfGfx/core/resources/DropShadowEffect.cpp`
+
+The normal native Skia path is separate. Software-compatible sampling is an
+explicit mode with documented comparison boundaries, not a claim that every
+WPF render path produces identical pixels.

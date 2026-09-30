@@ -15,7 +15,7 @@ internal static class EffectReferenceTests
 {
     public static (int Passed,int Failed) Run()
     {
-        var passed=0;var failed=0;var samples=0;var maxInteriorDifference=0;
+        var passed=0;var failed=0;var samples=0;var maxInteriorDifference=0;var nativeDefaultMaxDifference=0;
         var rows=new List<object>();var profiles=new List<object>();
         const int tolerance=1; // one 8-bit channel level, for opacity quantization at fully covered pixels
         const string directory="artifacts/verification/wpf-effects";
@@ -33,12 +33,12 @@ internal static class EffectReferenceTests
             var data=new byte[300*220*4*scale*scale];bitmap.CopyPixels(data,300*scale*4,0);
             var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));using var output=new MemoryStream();encoder.Save(output);png=output.ToArray();return data;
         }
-        byte[] Portable(DesignEffect? effect,double opacity,int scale)
+        byte[] Portable(DesignEffect? effect,double opacity,int scale,EffectRenderingMode mode=EffectRenderingMode.WpfSoftwareCompatible)
         {
             var n=DesignNode.Create("Rectangle","Target",70,70,40,40).Set("Fill","Red").Set("Opacity",opacity);
             var d=new DesignDocument{Root=DesignNode.Create("Canvas","Root",0,0,300,220).Set("Background","White") with{Children=[n]}};
             if(effect is not null)d=EffectEditing.Apply(d,[n.Id],effect);
-            using var r=new DesignRenderer();return r.ExportPng(new LayoutEngine(r).Arrange(d.Root),scale);
+            using var r=new DesignRenderer{EffectMode=mode};return r.ExportPng(new LayoutEngine(r).Arrange(d.Root),scale);
         }
         foreach(var angle in new[]{0d,45,90,135,180,225,270,315})foreach(var opacity in new[]{0d,.5,1})foreach(var sourceOpacity in new[]{.5,1})foreach(var scale in new[]{1,2})
         {
@@ -47,19 +47,22 @@ internal static class EffectReferenceTests
             {
                 var effect=new DesignEffect{Kind=DesignEffectKind.DropShadow,Radius=0,Direction=angle,ShadowDepth=60,Opacity=opacity,Color="#000000FF"};
                 var native=Native(effect,sourceOpacity,scale,out var nativePng);var portable=Portable(effect,sourceOpacity,scale);using var image=SKBitmap.Decode(portable);
-                var delta=effect.ShadowOffset;
+                using var nativeImage=SKBitmap.Decode(Portable(effect,sourceOpacity,scale,EffectRenderingMode.Native));
+                var observations=new List<object>();var delta=effect.ShadowOffset;
                 var points=new[]{new DPoint(90,90),new DPoint(90+delta.X,90+delta.Y),new DPoint(250,190)};
                 var difference=0;
                 foreach(var point in points)
                 {
-                    var px=(int)Math.Round(point.X*scale);var py=(int)Math.Round(point.Y*scale);var at=(py*300*scale+px)*4;var value=image.GetPixel(px,py);
+                    var px=(int)Math.Round(point.X*scale);var py=(int)Math.Round(point.Y*scale);var at=(py*300*scale+px)*4;var value=image.GetPixel(px,py);var normal=nativeImage.GetPixel(px,py);
+                    observations.Add(new{x=px,y=py,native=new[]{native[at+2],native[at+1],native[at],native[at+3]},compatible=new[]{value.Red,value.Green,value.Blue,value.Alpha},normal=new[]{normal.Red,normal.Green,normal.Blue,normal.Alpha}});
+                    foreach(var (expected,actual) in new[]{(native[at],normal.Blue),(native[at+1],normal.Green),(native[at+2],normal.Red),(native[at+3],normal.Alpha)})nativeDefaultMaxDifference=Math.Max(nativeDefaultMaxDifference,Math.Abs(expected-actual));
                     foreach(var (expected,actual) in new[]{(native[at],value.Blue),(native[at+1],value.Green),(native[at+2],value.Red),(native[at+3],value.Alpha)})
                     {difference=Math.Max(difference,Math.Abs(expected-actual));samples++;}
                 }
                 maxInteriorDifference=Math.Max(maxInteriorDifference,difference);
-                if(difference>tolerance)throw new InvalidOperationException($"Interior channel error {difference} exceeds {tolerance}.");
+                if(difference>tolerance)throw new InvalidOperationException($"Interior channel error {difference} exceeds {tolerance}. "+JsonSerializer.Serialize(observations));
                 if(angle==315&&opacity==1&&sourceOpacity==1&&scale==1){File.WriteAllBytes(directory+"/hard-shadow-native.png",nativePng);File.WriteAllBytes(directory+"/hard-shadow-designspace.png",portable);}
-                passed++;rows.Add(new{name,passed=true,difference});
+                passed++;rows.Add(new{name,passed=true,difference,observations});
             }
             catch(Exception e){failed++;rows.Add(new{name,passed=false,error=e.ToString()});Console.Error.WriteLine("FAIL WPF effects: "+name+": "+e);}
         }
@@ -71,14 +74,15 @@ internal static class EffectReferenceTests
             try
             {
                 var native=Native(effect,1,1,out var nativePng);var portable=Portable(effect,1,1);using var image=SKBitmap.Decode(portable);
-                var profile=new List<object>();var maximum=0;
-                for(var x=45;x<=100;x++){var reference=native[(90*300+x)*4+1];var value=image.GetPixel(x,90).Green;maximum=Math.Max(maximum,Math.Abs(reference-value));profile.Add(new{x,native=reference,designSpace=value});}
-                profiles.Add(new{name,maximum,profile});File.WriteAllBytes(directory+"/"+name+"-native.png",nativePng);File.WriteAllBytes(directory+"/"+name+"-designspace.png",portable);
+                using var normal=SKBitmap.Decode(Portable(effect,1,1,EffectRenderingMode.Native));
+                var profile=new List<object>();var maximum=0;var nativeMaximum=0;
+                for(var x=45;x<=100;x++){var reference=native[(90*300+x)*4+1];var value=image.GetPixel(x,90).Green;maximum=Math.Max(maximum,Math.Abs(reference-value));nativeMaximum=Math.Max(nativeMaximum,Math.Abs(reference-normal.GetPixel(x,90).Green));profile.Add(new{x,native=reference,compatible=value,normal=normal.GetPixel(x,90).Green});}
+                profiles.Add(new{name,maximum,nativeMaximum,profile});File.WriteAllBytes(directory+"/"+name+"-native.png",nativePng);File.WriteAllBytes(directory+"/"+name+"-designspace.png",portable);
             }
             catch(Exception e){failed++;Console.Error.WriteLine("FAIL WPF effect measurement: "+name+": "+e);profiles.Add(new{name,error=e.ToString()});}
         }
-        File.WriteAllText("artifacts/verification/wpf-effect-results.json",JsonSerializer.Serialize(new{passed,failed,samples,maxInteriorDifference,tolerance,
-            scope="Native WPF hard-shadow interior pixels, directions, alpha and scale. Soft blur profiles are measurements, not pixel-equivalence passes. No Blend UI or hardware-GPU qualification.",rows,profiles},new JsonSerializerOptions{WriteIndented=true}));
+        File.WriteAllText("artifacts/verification/wpf-effect-results.json",JsonSerializer.Serialize(new{passed,failed,samples,maxInteriorDifference,nativeDefaultMaxDifference,tolerance,
+            scope="Explicit WpfSoftwareCompatible mode versus native WPF hard-shadow interior pixels, directions, alpha and scale. Native-mode differences are measured independently.  Soft blur profiles are measurements, not pixel-equivalence passes. No Blend UI or hardware-GPU qualification.",rows,profiles},new JsonSerializerOptions{WriteIndented=true}));
         Console.WriteLine($"WPF effects: {passed} semantic cases passed, {failed} failed; {samples} interior channels; maximum difference {maxInteriorDifference}.");return(passed,failed);
     }
 }

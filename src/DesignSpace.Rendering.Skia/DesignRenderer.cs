@@ -16,6 +16,8 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
     private readonly SkiaTextService _text=new();
     private readonly EmbeddedImages _images=new();
     private readonly EffectFilterCache _effects=new();
+    /// <summary>Explicit software-reference numerics; Native remains the normal fast rendering path.</summary>
+    public EffectRenderingMode EffectMode { get; set; }
     public long EffectBuildCount=>_effects.Builds;
     public long EffectCacheHits=>_effects.Hits;
     private LayoutSnapshot? _indexed;
@@ -83,7 +85,7 @@ public sealed partial class DesignRenderer : IDisposable,IConstrainedTextMetrics
             SKImageFilter? effect=null;
             try
             {
-                if(renderEffects&&_brushResolver?.Resolve(n.Id,"Effect") is { } source)effect=_effects.Get(source);
+                if(renderEffects&&_brushResolver?.Resolve(n.Id,"Effect") is { } source)effect=_effects.Get(source,EffectMode);
             }
             catch(Exception ex)when(ex is InvalidDataException or InvalidOperationException or ArgumentException)
             {if(_diagnostics.Count<100)_diagnostics.Add(n.Name+": "+ex.Message);}
