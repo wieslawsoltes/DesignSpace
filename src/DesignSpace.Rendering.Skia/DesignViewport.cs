@@ -14,6 +14,21 @@ public sealed class DesignViewport
     public bool ShowRulers { get; set; }=true;
     public bool SnapToGrid { get; set; }=true;
     public double GridSize { get; set; }=8;
+    public bool SnapToSnaplines { get; set; }
+    public double SnapTolerance { get; set; }=6;
+    public double DefaultMargin { get; set; }=8;
+    public double DefaultPadding { get; set; }=8;
+    public ArtboardSettings CaptureArtboardSettings()=>new()
+    {
+        ShowGrid=ShowGrid,ShowRulers=ShowRulers,SnapToGrid=SnapToGrid,GridSize=GridSize,
+        SnapToSnaplines=SnapToSnaplines,SnapTolerance=SnapTolerance,DefaultMargin=DefaultMargin,DefaultPadding=DefaultPadding
+    };
+    public void ApplyArtboardSettings(ArtboardSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);settings.Validate();
+        ShowGrid=settings.ShowGrid;ShowRulers=settings.ShowRulers;SnapToGrid=settings.SnapToGrid;GridSize=settings.GridSize;
+        SnapToSnaplines=settings.SnapToSnaplines;SnapTolerance=settings.SnapTolerance;DefaultMargin=settings.DefaultMargin;DefaultPadding=settings.DefaultPadding;
+    }
     public DPoint ScreenToWorld(DPoint p)=>new((p.X-PanX)/Zoom,(p.Y-PanY)/Zoom);
     public DPoint WorldToScreen(DPoint p)=>new(p.X*Zoom+PanX,p.Y*Zoom+PanY);
     public void ZoomAt(DPoint screen,double zoom) { var world=ScreenToWorld(screen); Zoom=Math.Clamp(zoom,.1,8); PanX=screen.X-world.X*Zoom; PanY=screen.Y-world.Y*Zoom; }

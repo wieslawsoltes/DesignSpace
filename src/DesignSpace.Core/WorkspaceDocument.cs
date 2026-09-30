@@ -27,6 +27,10 @@ public sealed record WorkspaceEditorState
     public bool ShowRulers { get; init; }=true;
     public bool SnapToGrid { get; init; }=true;
     public double GridSize { get; init; }=8;
+    public bool SnapToSnaplines { get; init; }
+    public double SnapTolerance { get; init; }=6;
+    public double DefaultMargin { get; init; }=8;
+    public double DefaultPadding { get; init; }=8;
     public ImmutableDictionary<string,DesignerPanelDraft> Panels { get; init; }=ImmutableDictionary<string,DesignerPanelDraft>.Empty;
     public bool HasDrafts=>SourceDraft is not null || Panels.Values.Any(p=>p.HasChanges);
 }
@@ -68,6 +72,7 @@ public static class WorkspaceValidator
         if(state is null||state.Panels is null||state.Panels.Count>16)throw new InvalidDataException("Invalid editor state.");
         if(state.Mode is not ("Design" or "Split" or "XAML") || state.SplitOrientation is not ("Horizontal" or "Vertical"))throw new InvalidDataException("Unknown editor view.");
         if(!double.IsFinite(state.Zoom)||state.Zoom<.1||state.Zoom>8||!double.IsFinite(state.PanX)||!double.IsFinite(state.PanY)||Math.Abs(state.PanX)>1e10||Math.Abs(state.PanY)>1e10||!double.IsFinite(state.GridSize)||state.GridSize<1||state.GridSize>10000||!double.IsFinite(state.SplitRatio)||state.SplitRatio<.1||state.SplitRatio>.9)throw new InvalidDataException("Invalid viewport or split dimensions.");
+        new ArtboardSettings { GridSize=state.GridSize,SnapTolerance=state.SnapTolerance,DefaultMargin=state.DefaultMargin,DefaultPadding=state.DefaultPadding }.Validate();
         if(!double.IsFinite(state.TimelineTime)||state.TimelineTime<0||state.TimelineTime>86400000)throw new InvalidDataException("Invalid timeline position.");
         if(state.SourceDraft?.Length>8*1024*1024)throw new InvalidDataException("Source draft exceeds the input limit.");
         foreach(var (key,panel) in state.Panels)

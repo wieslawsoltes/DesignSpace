@@ -32,7 +32,7 @@ public sealed partial class DesignerSurface : Grid,IDisposable
         protected override void RenderOverride(SKCanvas canvas,Size area)
         {
             owner.Renderer.Draw(canvas,area.Width,area.Height,owner.Layout,owner.Viewport,(owner.Tool is "Direct Selection" or "Pen" or "Path" && owner.Session.Selection.Count==1 && owner.Session.Index.Find(owner.Session.Selection.Single())?.Type=="Path") ? NoSelection : owner.Session.Selection,owner._marquee,owner.IsPreview);
-            owner.DrawPathOverlay(canvas);
+            owner.DrawPathOverlay(canvas);owner.DrawSnaplines(canvas);
             owner.Rendered?.Invoke(owner,EventArgs.Empty);
         }
     }
@@ -83,8 +83,8 @@ public sealed partial class DesignerSurface : Grid,IDisposable
         Session.DocumentChanged+=DocumentChanged; Session.SelectionChanged+=SelectionChanged;
         SizeChanged+=(_,_)=> { if(_fitPending && ActualWidth>100 && ActualHeight>100) { Fit(); _fitPending=false; } else Invalidate(); };
     }
-    private void DocumentChanged(object? sender,EventArgs e) { PathDocumentChanged(); _previewRoot=null; Storyboard=null; State=null; _layout=null; Invalidate(); }
-    private void SelectionChanged(object? sender,EventArgs e){PathSelectionChanged();Invalidate();}
+    private void DocumentChanged(object? sender,EventArgs e) { if(_gesture.Length>0)CancelGesture();ClearSnaplines();PathDocumentChanged(); _previewRoot=null; Storyboard=null; State=null; _layout=null; Invalidate(); }
+    private void SelectionChanged(object? sender,EventArgs e){if(_gesture is "move" or "resize")CancelGesture();PathSelectionChanged();Invalidate();}
     public void FocusDesigner()=>_focus.Focus(FocusState.Programmatic);
     public void Invalidate()=>_surface.Invalidate();
     public void InvalidateLayout() { _layout=null; Invalidate(); }
@@ -96,7 +96,7 @@ public sealed partial class DesignerSurface : Grid,IDisposable
         Storyboard=board; Playhead=time; State=state; _previewRoot=AnimationEngine.Evaluate(Session.Document.Root,board,time,state); _layout=null; Invalidate();
     }
     public void ClearPreview() { Storyboard=null; State=null; _previewRoot=null; _layout=null; Playhead=0; Invalidate(); }
-    public void CancelGesture() { CancelPathDraft();_gesture=""; _marquee=null; _previewRoot=null; _layout=null; _changes=null; _original.Clear(); Invalidate(); }
+    public void CancelGesture() { ClearSnaplines();CancelPathDraft();_gesture=""; _marquee=null; _previewRoot=null; _layout=null; _changes=null; _original.Clear(); Invalidate(); }
     private static DPoint[] Handles(DRect b)=>[new(b.X,b.Y),new(b.Center.X,b.Y),new(b.Right,b.Y),new(b.X,b.Center.Y),new(b.Right,b.Center.Y),new(b.X,b.Bottom),new(b.Center.X,b.Bottom),new(b.Right,b.Bottom)];
     private void Pressed(object sender,PointerRoutedEventArgs e)
     {
@@ -150,7 +150,7 @@ public sealed partial class DesignerSurface : Grid,IDisposable
                 }
             }
         }
-        _surface.CapturePointer(e.Pointer); e.Handled=true;
+        BeginSnaplines();_surface.CapturePointer(e.Pointer); e.Handled=true;
     }
     private void Moved(object sender,PointerRoutedEventArgs e)
     {
@@ -159,13 +159,18 @@ public sealed partial class DesignerSurface : Grid,IDisposable
         if(_gesture.Length==0)return;
         if(_gesture=="pan") { Viewport.PanX=_panStart.X+screen.X-_screenStart.X; Viewport.PanY=_panStart.Y+screen.Y-_screenStart.Y; Invalidate(); return; }
         if(_gesture is "draw" or "marquee") { _marquee=DRect.FromPoints(_start,world); Invalidate(); return; }
+        // A click or subpixel pointer jitter must never snap an unmoved object.
+        if(Math.Max(Math.Abs(screen.X-_screenStart.X),Math.Abs(screen.Y-_screenStart.Y))<3)
+        { _snapResult=default;_changes=null;_previewRoot=null;_layout=null;Invalidate();return; }
+        var snappedMovement=_gesture=="move"?SnapMove(world-_start):null;
         var changes=new Dictionary<Guid,IReadOnlyDictionary<string,string>>();
         foreach(var (id,original) in _original)
         {
             var delta=original.ParentInverse.MapVector(world-_start); var b=original.Box;
             if(_gesture=="move")
             {
-                if(Viewport.SnapToGrid && !DesignerKeys.Alt) delta=new(Numbers.Snap(delta.X,Viewport.GridSize),Numbers.Snap(delta.Y,Viewport.GridSize));
+                delta=snappedMovement??delta;
+                if(Viewport.SnapToGrid && !DesignerKeys.Alt) delta=new(_snapResult.SnappedX?delta.X:Numbers.Snap(delta.X,Viewport.GridSize),_snapResult.SnappedY?delta.Y:Numbers.Snap(delta.Y,Viewport.GridSize));
                 b=b.Translate(delta.X,delta.Y);
             }
             else
@@ -175,12 +180,14 @@ public sealed partial class DesignerSurface : Grid,IDisposable
                 if(_resizeHandle is 2 or 4 or 7) right=Math.Max(left+1,right+delta.X);
                 if(_resizeHandle is 0 or 1 or 2) top=Math.Min(bottom-1,top+delta.Y);
                 if(_resizeHandle is 5 or 6 or 7) bottom=Math.Max(top+1,bottom+delta.Y);
+                b=SnapResize(new(left,top,right-left,bottom-top),original.Box);
+                left=b.X;top=b.Y;right=b.Right;bottom=b.Bottom;
                 if(Viewport.SnapToGrid && !DesignerKeys.Alt)
                 {
-                    if(_resizeHandle is 0 or 3 or 5) left=Numbers.Snap(left,Viewport.GridSize);
-                    if(_resizeHandle is 2 or 4 or 7) right=Numbers.Snap(right,Viewport.GridSize);
-                    if(_resizeHandle is 0 or 1 or 2) top=Numbers.Snap(top,Viewport.GridSize);
-                    if(_resizeHandle is 5 or 6 or 7) bottom=Numbers.Snap(bottom,Viewport.GridSize);
+                    if(!_snapResult.SnappedX&&_resizeHandle is 0 or 3 or 5) left=Numbers.Snap(left,Viewport.GridSize);
+                    if(!_snapResult.SnappedX&&_resizeHandle is 2 or 4 or 7) right=Numbers.Snap(right,Viewport.GridSize);
+                    if(!_snapResult.SnappedY&&_resizeHandle is 0 or 1 or 2) top=Numbers.Snap(top,Viewport.GridSize);
+                    if(!_snapResult.SnappedY&&_resizeHandle is 5 or 6 or 7) bottom=Numbers.Snap(bottom,Viewport.GridSize);
                 }
                 b=new(left,top,Math.Max(1,right-left),Math.Max(1,bottom-top));
                 if(DesignerKeys.Shift) b=b with { Height=b.Width*original.Box.Height/Math.Max(1,original.Box.Width) };
@@ -222,8 +229,8 @@ public sealed partial class DesignerSurface : Grid,IDisposable
                 Session.Execute(gesture=="move" ? "Move selection" : "Resize selection",d=>d with { Root=DesignTree.SetProperties(d.Root,changes,replacePropertyElements:true) });
         }
         catch(Exception ex) { Error?.Invoke(this,ex.Message); }
-        finally { _marquee=null; _previewRoot=null; _layout=null; _changes=null; _original.Clear(); _surface.ReleasePointerCapture(e.Pointer); Invalidate(); ViewChanged?.Invoke(this,EventArgs.Empty); }
+        finally { ClearSnaplines();_marquee=null; _previewRoot=null; _layout=null; _changes=null; _original.Clear(); _surface.ReleasePointerCapture(e.Pointer); Invalidate(); ViewChanged?.Invoke(this,EventArgs.Empty); }
         e.Handled=true;
     }
-    public void Dispose() { Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged; _adorners.Dispose();Renderer.Dispose(); }
+    public void Dispose() { Session.DocumentChanged-=DocumentChanged; Session.SelectionChanged-=SelectionChanged; _snapRenderer.Dispose();_adorners.Dispose();Renderer.Dispose(); }
 }

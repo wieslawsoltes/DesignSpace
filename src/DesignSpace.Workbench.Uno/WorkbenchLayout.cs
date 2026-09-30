@@ -20,9 +20,8 @@ public sealed partial class WorkbenchView
         center.Children.Add(_documentTabs);
         var designerBar=new StackPanel { Orientation=Orientation.Horizontal,Background=StudioTheme.Brush("#333337"),Spacing=4,Padding=new Thickness(5,1,5,1) };
         designerBar.Children.Add(StudioTheme.Text("Design surface",11,"#AEAEBA")); designerBar.Children.Add(new StudioButton("Fit",Designer.Fit,"Fit artboard")); designerBar.Children.Add(new StudioButton("−",()=>Designer.Zoom(.8),"Zoom out")); _zoom.Width=44; designerBar.Children.Add(_zoom); designerBar.Children.Add(new StudioButton("+",()=>Designer.Zoom(1.25),"Zoom in"));
-        designerBar.Children.Add(new StudioButton("Grid",()=> { Designer.Viewport.ShowGrid=!Designer.Viewport.ShowGrid; Designer.Invalidate(); },"Toggle design grid"));
-        designerBar.Children.Add(new StudioButton("Snap",()=> { Designer.Viewport.SnapToGrid=!Designer.Viewport.SnapToGrid; SetStatus(Designer.Viewport.SnapToGrid ? "Grid snapping enabled · Alt temporarily disables snapping" : "Grid snapping disabled"); },"Toggle grid snapping"));
-        designerBar.Children.Add(new StudioButton("Base",()=> { Timeline.Stop(); States.Select(null); Designer.ClearPreview(); },"Return to base values")); SetRow(designerBar,1); center.Children.Add(designerBar);
+        AddArtboardCommands(designerBar);
+        designerBar.Children.Add(new StudioButton("Base",()=> { Timeline.Stop(); States.Select(null); Designer.ClearPreview(); },"Return to base values")); var artboardBar=new CommandBarScroller(designerBar);SetRow(artboardBar,1);center.Children.Add(artboardBar);
         _designSplit.Children.Add(Designer);_designSplit.Children.Add(Source);CreateSourceSplitter();
         var editing=new Grid();editing.ColumnDefinitions.Add(new(){Width=new GridLength(36)});editing.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});
         editing.Children.Add(BuildTools());SetColumn(_designSplit,1);editing.Children.Add(_designSplit);SetRow(editing,2);center.Children.Add(editing);
